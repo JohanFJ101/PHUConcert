@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: phuconcert-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: phuconcert
+      POSTGRES_PASSWORD: phuconcert
+      POSTGRES_DB: phuconcert
+    ports:
+      - "5432:5432"
+    volumes:
+      - phuconcert-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  phuconcert-postgres-data:

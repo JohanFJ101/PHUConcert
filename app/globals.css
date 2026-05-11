@@ -1,0 +1,173 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --text: #17202a;
+  --muted: #5e6b7a;
+  --border: #d7dde5;
+  --primary: #175cd3;
+  --primary-dark: #124cae;
+  --danger: #b42318;
+  --success: #067647;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.75rem 1rem;
+}
+
+button:hover {
+  background: var(--primary-dark);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+input,
+select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 0.75rem;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.page {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.narrow-page {
+  width: min(520px, 100%);
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.split {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.big-number {
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.message {
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.message.success {
+  background: #ecfdf3;
+  color: var(--success);
+}
+
+.message.error {
+  background: #fef3f2;
+  color: var(--danger);
+}
+
+.item-button {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.85rem;
+  text-align: left;
+  width: 100%;
+}
+
+.item-button:hover,
+.item-button.selected {
+  background: #eaf2ff;
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.transaction {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0;
+}
+
+.transaction:first-child {
+  border-top: 0;
+}
+
+.header-actions {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.secondary-button {
+  background: #e7ebf0;
+  color: var(--text);
+}
+
+.secondary-button:hover {
+  background: #d8dee7;
+}

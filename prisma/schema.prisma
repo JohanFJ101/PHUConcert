@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ATTENDEE
+  STAFF
+}
+
+model User {
+  id         String      @id @default(cuid())
+  googleSub  String?     @unique
+  email      String      @unique
+  name       String
+  dob        DateTime?
+  gender     String?
+  phone      String?
+  role       Role        @default(ATTENDEE)
+  wristbands Wristband[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model Staff {
+  id           String        @id @default(cuid())
+  username     String        @unique
+  passwordHash String
+  role         Role          @default(STAFF)
+  shopId       String
+  shop         Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Shop {
+  id           String        @id @default(cuid())
+  name         String
+  category     String
+  staffMembers Staff[]
+  items        Item[]
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Item {
+  id             String        @id @default(cuid())
+  shopId         String
+  shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name           String
+  priceCredits   Int
+  category       String
+  ageRestricted  Boolean       @default(false)
+  active         Boolean       @default(true)
+  transactions   Transaction[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Wristband {
+  id             String        @id @default(cuid())
+  qrToken        String        @unique
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balanceCredits Int           @default(0)
+  status         String        @default("ACTIVE")
+  transactions   Transaction[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Transaction {
+  id            String    @id @default(cuid())
+  wristbandId   String
+  wristband     Wristband @relation(fields: [wristbandId], references: [id], onDelete: Cascade)
+  staffId       String?
+  staff         Staff?    @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  shopId        String?
+  shop          Shop?     @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  itemId        String?
+  item          Item?     @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  amountCredits Int
+  type          String
+  description   String?
+  createdAt     DateTime  @default(now())
+
+  @@index([wristbandId, createdAt])
+  @@index([shopId, createdAt])
+}
