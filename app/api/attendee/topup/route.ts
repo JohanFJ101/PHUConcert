@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { jsonError, readJsonObject, requireAttendeeSession } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
-const ALLOWED_TOPUPS = new Set([100, 250, 500]);
-
 export async function POST(request: Request) {
   const { session, error } = await requireAttendeeSession();
   if (error) {
@@ -18,7 +16,7 @@ export async function POST(request: Request) {
     return jsonError("Wristband is required", 400);
   }
 
-  if (!Number.isInteger(amountCredits) || !ALLOWED_TOPUPS.has(amountCredits)) {
+  if (!Number.isInteger(amountCredits) || amountCredits <= 0) {
     return jsonError("Invalid top-up amount", 400);
   }
 

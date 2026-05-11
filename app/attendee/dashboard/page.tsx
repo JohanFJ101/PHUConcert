@@ -26,6 +26,8 @@ type Transaction = {
   createdAt: string;
 };
 
+const TOPUP_PRESETS = [100, 250, 500];
+
 export default function AttendeeDashboardPage() {
   const router = useRouter();
   const [attendee, setAttendee] = useState<Attendee | null>(null);
@@ -34,7 +36,8 @@ export default function AttendeeDashboardPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState(true);
-  const [topupLoading, setTopupLoading] = useState<number | null>(null);
+  const [topupAmount, setTopupAmount] = useState("100");
+  const [topupLoading, setTopupLoading] = useState(false);
 
   const activeWristband = useMemo(() => wristbands[0] ?? null, [wristbands]);
 
@@ -78,14 +81,21 @@ export default function AttendeeDashboardPage() {
     return () => window.clearInterval(interval);
   }, [loadData]);
 
-  async function topUp(amountCredits: number) {
+  async function topUp() {
     if (!activeWristband) {
       setMessageType("error");
       setMessage("No wristband found");
       return;
     }
 
-    setTopupLoading(amountCredits);
+    const amountCredits = Number(topupAmount);
+    if (!Number.isInteger(amountCredits) || amountCredits <= 0) {
+      setMessageType("error");
+      setMessage("Enter a whole number greater than 0");
+      return;
+    }
+
+    setTopupLoading(true);
     setMessage(null);
 
     const response = await fetch("/api/attendee/topup", {
@@ -100,7 +110,7 @@ export default function AttendeeDashboardPage() {
     });
     const data = (await response.json()) as { success?: boolean; message?: string };
 
-    setTopupLoading(null);
+    setTopupLoading(false);
 
     if (!response.ok || !data.success) {
       setMessageType("error");
@@ -160,19 +170,35 @@ export default function AttendeeDashboardPage() {
         </div>
 
         <div className="card stack">
-          <h2>Mock Top-up</h2>
+          <h2>Top-up</h2>
           <div className="row">
-            {[100, 250, 500].map((amount) => (
+            {TOPUP_PRESETS.map((amount) => (
               <button
+                className="secondary-button"
                 key={amount}
                 type="button"
-                onClick={() => void topUp(amount)}
-                disabled={topupLoading !== null}
+                onClick={() => setTopupAmount(String(amount))}
+                disabled={topupLoading}
               >
-                {topupLoading === amount ? "Adding..." : `+${amount}`}
+                {amount}
               </button>
             ))}
           </div>
+          <label>
+            Credits to add
+            <input
+              inputMode="numeric"
+              min="1"
+              step="1"
+              type="number"
+              value={topupAmount}
+              onChange={(event) => setTopupAmount(event.target.value)}
+              placeholder="Enter amount"
+            />
+          </label>
+          <button type="button" onClick={() => void topUp()} disabled={topupLoading}>
+            {topupLoading ? "Adding..." : "Add credits"}
+          </button>
         </div>
       </section>
 

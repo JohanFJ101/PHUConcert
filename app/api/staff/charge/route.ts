@@ -47,6 +47,10 @@ export async function POST(request: Request) {
           throw new ChargeFailure("Staff account not found", 401);
         }
 
+        if (staff.role !== "STAFF" || !staff.shopId || !staff.shop) {
+          throw new ChargeFailure("Staff shop not found", 403);
+        }
+
         const item = await tx.item.findUnique({
           where: {
             id: itemId

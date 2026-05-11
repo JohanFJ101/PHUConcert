@@ -41,6 +41,26 @@ button {
   padding: 0.75rem 1rem;
 }
 
+a {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.button-link {
+  border-radius: 8px;
+  background: var(--primary);
+  color: #ffffff;
+  display: inline-block;
+  font-weight: 700;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+.button-link:hover {
+  background: var(--primary-dark);
+}
+
 button:hover {
   background: var(--primary-dark);
 }
@@ -156,6 +176,19 @@ label {
   border-top: 0;
 }
 
+.admin-row {
+  align-items: start;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  padding: 0.75rem 0;
+}
+
+.admin-row:first-of-type {
+  border-top: 0;
+}
+
 .header-actions {
   align-items: center;
   display: flex;
@@ -170,4 +203,10 @@ label {
 
 .secondary-button:hover {
   background: #d8dee7;
+}
+
+@media (max-width: 640px) {
+  .admin-row {
+    grid-template-columns: 1fr;
+  }
 }

@@ -64,12 +64,19 @@ async function main() {
       {
         username: "food_staff",
         passwordHash,
+        role: "STAFF",
         shopId: foodShop.id
       },
       {
         username: "bar_staff",
         passwordHash,
+        role: "STAFF",
         shopId: barShop.id
+      },
+      {
+        username: "admin",
+        passwordHash,
+        role: "ADMIN"
       }
     ]
   });

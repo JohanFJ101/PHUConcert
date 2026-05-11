@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const staff = await prisma.staff.findUnique({
+    const admin = await prisma.staff.findUnique({
       where: {
         username
       },
@@ -26,20 +26,20 @@ export async function POST(request: Request) {
     });
 
     if (
-      !staff ||
-      staff.role !== "STAFF" ||
-      !(await bcrypt.compare(password, staff.passwordHash))
+      !admin ||
+      admin.role !== "ADMIN" ||
+      !(await bcrypt.compare(password, admin.passwordHash))
     ) {
       return jsonError("Invalid username or password", 401);
     }
 
     const response = NextResponse.json({ success: true });
     setSessionCookie(response, {
-      role: "STAFF",
-      staffId: staff.id
+      role: "ADMIN",
+      staffId: admin.id
     });
     return response;
   } catch {
-    return jsonError("Staff login failed. Check database setup.", 500);
+    return jsonError("Admin login failed. Check database setup.", 500);
   }
 }

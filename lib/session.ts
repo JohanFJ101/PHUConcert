@@ -12,6 +12,10 @@ export type AppSession =
   | {
       role: "STAFF";
       staffId: string;
+    }
+  | {
+      role: "ADMIN";
+      staffId: string;
     };
 
 function getSessionSecret() {
@@ -61,7 +65,10 @@ export function verifySessionToken(token: string | undefined): AppSession | null
     if (parsed.role === "ATTENDEE" && typeof parsed.userId === "string") {
       return parsed;
     }
-    if (parsed.role === "STAFF" && typeof parsed.staffId === "string") {
+    if (
+      (parsed.role === "STAFF" || parsed.role === "ADMIN") &&
+      typeof parsed.staffId === "string"
+    ) {
       return parsed;
     }
     return null;

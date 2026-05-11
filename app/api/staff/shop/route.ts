@@ -16,6 +16,7 @@ export async function GET() {
       select: {
         id: true,
         username: true,
+        role: true,
         shop: {
           select: {
             id: true,
@@ -41,11 +42,11 @@ export async function GET() {
       }
     });
 
-    if (!staff) {
+    if (!staff || staff.role !== "STAFF" || !staff.shop) {
       return NextResponse.json(
         {
           success: false,
-          message: "Staff account not found"
+          message: "Staff shop not found"
         },
         { status: 401 }
       );

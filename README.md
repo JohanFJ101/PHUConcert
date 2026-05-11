@@ -7,11 +7,12 @@ Fullstack MVP for a festival wristband payment flow. One phone can run the atten
 - Next.js App Router with TypeScript
 - Prisma with PostgreSQL
 - Simple signed httpOnly cookie sessions for local MVP auth
-- Mock attendee login
-- Staff login with hashed passwords
+- Separate attendee, staff, and admin login pages
+- Staff and admin login with hashed passwords
 - Attendee wallet polling every 2 seconds
-- Mock top-up credits
+- Mock top-up credits with preset amounts or a custom typed amount
 - Staff shop charging by manual wristband token
+- Admin/operator dashboard for attendees, staff, and transactions
 - Transaction history saved in the database
 
 ## Local setup
@@ -70,12 +71,20 @@ ipconfig
 
 Attendee:
 
+- Go to `/attendee/login` or choose Attendee from `/login`.
 - Use the mock attendee login button.
 
 Staff:
 
+- Go to `/staff/login` or choose Staff from `/login`.
 - `food_staff` / `password123`
 - `bar_staff` / `password123`
+
+Admin:
+
+- Go to `/admin/login` or choose Admin from `/login`.
+- `admin` / `password123`
+- Admin dashboard: `/admin/dashboard`
 
 Demo wristband token:
 
@@ -84,10 +93,10 @@ Demo wristband token:
 ## Manual test checklist
 
 1. Open `/login` on phone 1.
-2. Click mock attendee login.
+2. Choose Attendee, then click mock attendee login.
 3. Confirm dashboard shows `wb_demo_001` and `500` credits.
 4. Open `/login` on phone 2.
-5. Login as `food_staff` / `password123`.
+5. Choose Staff, then login as `food_staff` / `password123`.
 6. Select Burger.
 7. Enter `wb_demo_001`.
 8. Click Charge.
@@ -100,6 +109,8 @@ Demo wristband token:
 15. Change demo DOB to under 21 and confirm alcohol charge fails.
 16. Try invalid QR token and confirm clean error.
 17. Try charging more than balance and confirm insufficient balance error.
+18. Choose Admin, then login as `admin` / `password123`.
+19. Confirm the admin dashboard shows attendees, staff/admins, and recent transactions.
 
 ## Useful commands
 

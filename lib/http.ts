@@ -33,6 +33,17 @@ export async function requireStaffSession() {
   return { session, error: null };
 }
 
+export async function requireAdminSession() {
+  const session = await getSession();
+  if (!session) {
+    return { session: null, error: jsonError("Not authenticated", 401) };
+  }
+  if (session.role !== "ADMIN") {
+    return { session: null, error: jsonError("Forbidden", 403) };
+  }
+  return { session, error: null };
+}
+
 export async function readJsonObject(request: Request) {
   try {
     const body = (await request.json()) as unknown;
