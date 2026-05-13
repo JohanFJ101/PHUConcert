@@ -23,11 +23,11 @@ This file is for agentic LLMs working in this repository. Keep it brief, factual
 ### Main Routes
 
 - `/login`: role chooser for attendee, staff, and admin.
-- `/attendee/login`: demo attendee login.
+- `/login/attendee`: demo attendee login.
 - `/attendee/dashboard`: attendee wallet, wristband balance, top-ups, transaction history, polling refresh.
-- `/staff/login`: staff login.
+- `/login/staff`: staff login.
 - `/staff/shop`: shop-specific menu and wristband charging page.
-- `/admin/login`: admin/operator login.
+- `/login/admin`: admin/operator login.
 - `/admin/dashboard`: operator view of attendees, staff/admins, and recent transactions.
 - `/onboarding`: attendee profile form kept available for later expansion.
 

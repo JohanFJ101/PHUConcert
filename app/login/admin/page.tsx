@@ -43,39 +43,40 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <main className="narrow-page stack">
-      <div>
-        <Link href="/login">Back to login choices</Link>
-        <h1>Admin Login</h1>
-        <p className="muted">Admin operators can view attendees, staff, and transactions.</p>
+    <main className="role-page role-admin">
+      <div className="role-shell">
+        <Link className="role-back" href="/login">
+          &larr; Back to login choices
+        </Link>
+        {message ? <div className="message error">{message}</div> : null}
+
+        <form className="role-card" onSubmit={loginAdmin}>
+          <h2>Admin credentials</h2>
+          <label>
+            Username
+            <input
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="Enter here"
+            />
+          </label>
+          <label>
+            Password
+            <input
+              autoComplete="current-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter here"
+            />
+          </label>
+  
+          <button type="submit" className="role-button" disabled={loading}>
+            {loading ? "Logging in..." : "Enter admin console"}
+          </button>
+        </form>
       </div>
-
-      {message ? <div className="message error">{message}</div> : null}
-
-      <form className="card stack" onSubmit={loginAdmin}>
-        <label>
-          Username
-          <input
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            placeholder="admin"
-          />
-        </label>
-        <label>
-          Password
-          <input
-            autoComplete="current-password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="password123"
-          />
-        </label>
-        <button type="submit" disabled={loading}>
-          {loading ? "Logging in..." : "Admin login"}
-        </button>
-      </form>
     </main>
   );
 }

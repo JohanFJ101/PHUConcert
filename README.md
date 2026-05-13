@@ -71,18 +71,18 @@ ipconfig
 
 Attendee:
 
-- Go to `/attendee/login` or choose Attendee from `/login`.
+- Go to `/login/attendee` or choose Attendee from `/login`.
 - Use the mock attendee login button.
 
 Staff:
 
-- Go to `/staff/login` or choose Staff from `/login`.
+- Go to `/login/staff` or choose Staff from `/login`.
 - `food_staff` / `password123`
 - `bar_staff` / `password123`
 
 Admin:
 
-- Go to `/admin/login` or choose Admin from `/login`.
+- Go to `/login/admin` or choose Admin from `/login`.
 - `admin` / `password123`
 - Admin dashboard: `/admin/dashboard`
 

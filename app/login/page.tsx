@@ -9,7 +9,7 @@ export default function LoginPage() {
       <section className="card stack">
         <h2>Attendee</h2>
         <p className="muted">For guests checking their wristband balance and history.</p>
-        <Link className="button-link" href="/attendee/login">
+        <Link className="button-link" href="/login/attendee">
           Attendee login
         </Link>
       </section>
@@ -17,7 +17,7 @@ export default function LoginPage() {
       <section className="card stack">
         <h2>Staff</h2>
         <p className="muted">For food and bar counters charging wristbands.</p>
-        <Link className="button-link" href="/staff/login">
+        <Link className="button-link" href="/login/staff">
           Staff login
         </Link>
       </section>
@@ -25,7 +25,7 @@ export default function LoginPage() {
       <section className="card stack">
         <h2>Admin</h2>
         <p className="muted">For operators with access to attendees, staff, and transactions.</p>
-        <Link className="button-link" href="/admin/login">
+        <Link className="button-link" href="/login/admin">
           Admin login
         </Link>
       </section>

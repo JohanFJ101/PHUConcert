@@ -71,7 +71,7 @@ export default function AdminDashboardPage() {
     try {
       const response = await fetch("/api/admin/overview", { cache: "no-store" });
       if (response.status === 401 || response.status === 403) {
-        router.push("/admin/login");
+        router.push("/login/admin");
         return;
       }
 

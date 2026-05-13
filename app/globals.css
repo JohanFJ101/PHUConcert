@@ -210,3 +210,138 @@ label {
     grid-template-columns: 1fr;
   }
 }
+
+/* Role-themed login pages */
+.role-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: start center;
+  padding: 2rem 1rem;
+  background: var(--role-bg, var(--bg));
+}
+
+.role-shell {
+  width: min(480px, 100%);
+  display: grid;
+  gap: 1.25rem;
+}
+
+.role-back {
+  color: var(--role-accent, var(--primary));
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.role-back:hover {
+  text-decoration: underline;
+}
+
+.role-hero {
+  background: var(--role-hero, var(--card));
+  color: var(--role-hero-text, var(--text));
+  border-radius: 16px;
+  padding: 1.75rem 1.5rem;
+  display: grid;
+  gap: 0.75rem;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+.role-hero h1 {
+  margin: 0;
+  font-size: 1.9rem;
+  letter-spacing: -0.01em;
+}
+
+.role-hero p {
+  margin: 0;
+  opacity: 0.85;
+  font-size: 0.95rem;
+}
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--role-badge-bg, rgba(255, 255, 255, 0.2));
+  color: var(--role-badge-text, #ffffff);
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.role-emblem {
+  font-size: 2.25rem;
+  line-height: 1;
+}
+
+.role-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--role-accent, var(--primary));
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.role-card h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.role-button {
+  background: var(--role-accent, var(--primary));
+}
+
+.role-button:hover {
+  background: var(--role-accent-dark, var(--primary-dark));
+}
+
+.role-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: var(--role-hint-bg, #f1f5f9);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+}
+
+/* Attendee: friendly green */
+.role-attendee {
+  --role-bg: #ecfdf5;
+  --role-accent: #047857;
+  --role-accent-dark: #035e44;
+  --role-hero: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  --role-hero-text: #ffffff;
+  --role-badge-bg: rgba(255, 255, 255, 0.25);
+  --role-badge-text: #ffffff;
+  --role-hint-bg: #d1fae5;
+}
+
+/* Staff: warm amber */
+.role-staff {
+  --role-bg: #fff7ed;
+  --role-accent: #c2410c;
+  --role-accent-dark: #9a3412;
+  --role-hero: linear-gradient(135deg, #fb923c 0%, #c2410c 100%);
+  --role-hero-text: #ffffff;
+  --role-badge-bg: rgba(255, 255, 255, 0.25);
+  --role-badge-text: #ffffff;
+  --role-hint-bg: #ffedd5;
+}
+
+/* Admin: deep indigo */
+.role-admin {
+  --role-bg: #eef2ff;
+  --role-accent: #4338ca;
+  --role-accent-dark: #312e81;
+  --role-hero: linear-gradient(135deg, #6366f1 0%, #312e81 100%);
+  --role-hero-text: #ffffff;
+  --role-badge-bg: rgba(255, 255, 255, 0.25);
+  --role-badge-text: #ffffff;
+  --role-hint-bg: #e0e7ff;
+}
