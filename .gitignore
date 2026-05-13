@@ -1,10 +1,19 @@
+# Dependency and build artefacts
 node_modules
 .next
 out
 dist
+
+# Secrets — never commit local environment values
 .env
 .env*.local
+
+# Test/coverage output
 coverage
+
+# Misc generated logs and incremental build caches
 *.log
 *.tsbuildinfo
+
+# Local SQLite file (if Prisma is ever switched to SQLite for quick tests)
 prisma/dev.db

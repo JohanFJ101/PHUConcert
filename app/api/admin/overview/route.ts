@@ -1,3 +1,19 @@
+/**
+ * GET /api/admin/overview
+ *
+ * One-stop endpoint for the admin dashboard. Runs three reads in parallel
+ * (attendees + their wristbands, staff + their shops, last 100
+ * transactions with relations) and computes header totals on top.
+ *
+ * Response: { totals, attendees, staff, transactions } where:
+ *   - totals: aggregate counts and credit sums for the header tiles.
+ *   - attendees: user rows with their wristbands.
+ *   - staff: staff rows with their shop relation.
+ *   - transactions: flattened ledger rows (latest 100).
+ *
+ * Auth: ADMIN session required.
+ */
+
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
@@ -9,6 +25,8 @@ export async function GET() {
   }
 
   try {
+    // Three independent reads, kicked off together so the dashboard is
+    // bounded by the slowest query rather than the sum of all three.
     const [attendees, staffMembers, transactions] = await Promise.all([
       prisma.user.findMany({
         select: {
@@ -37,6 +55,8 @@ export async function GET() {
         }
       }),
       prisma.staff.findMany({
+        // `passwordHash` is intentionally excluded so it can never leak
+        // to the admin UI.
         select: {
           id: true,
           username: true,
@@ -88,10 +108,15 @@ export async function GET() {
         orderBy: {
           createdAt: "desc"
         },
+        // Cap to the latest 100 so the dashboard stays responsive even
+        // after thousands of charges; pagination can be added later.
         take: 100
       })
     ]);
 
+    // Header tile metrics. All three are derived locally rather than via
+    // separate SQL aggregates: with the data already fetched above this
+    // is cheap and avoids extra round-trips.
     const totalBalance = attendees.reduce(
       (sum, attendee) =>
         sum +
@@ -101,6 +126,9 @@ export async function GET() {
         ),
       0
     );
+    // Spend totals only look at the most recent 100 transactions. That is
+    // a known caveat of the MVP; the admin UI labels these as "Recent
+    // Transactions" to make the bound explicit.
     const totalSpend = transactions
       .filter((transaction) => transaction.amountCredits < 0)
       .reduce((sum, transaction) => sum + Math.abs(transaction.amountCredits), 0);
@@ -120,6 +148,9 @@ export async function GET() {
       },
       attendees,
       staff: staffMembers,
+      // Flatten the nested Prisma shape into the form the UI consumes,
+      // so the frontend doesn't have to walk multiple levels of nullable
+      // relations.
       transactions: transactions.map((transaction) => ({
         id: transaction.id,
         amountCredits: transaction.amountCredits,

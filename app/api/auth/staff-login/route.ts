@@ -1,3 +1,16 @@
+/**
+ * POST /api/auth/staff-login
+ *
+ * Username/password sign-in for STAFF accounts only. ADMIN credentials are
+ * rejected here even if the password is correct, forcing admins to use
+ * `/api/auth/admin-login`. This separation keeps the two surfaces distinct
+ * so that compromising one login form cannot grant the other role.
+ *
+ * Request body: { username: string; password: string }
+ * Response: { success: true } on success; `phu_session` cookie is set.
+ *           `{ success: false, message }` with 400/401/500 on failure.
+ */
+
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { jsonError, readJsonObject } from "@/lib/http";
@@ -18,6 +31,7 @@ export async function POST(request: Request) {
       where: {
         username
       },
+      // Hash is needed for bcrypt.compare; never include it in the response.
       select: {
         id: true,
         passwordHash: true,
@@ -25,6 +39,8 @@ export async function POST(request: Request) {
       }
     });
 
+    // One generic message for all three failure modes (no such user, wrong
+    // password, wrong role) so attackers cannot probe which usernames exist.
     if (
       !staff ||
       staff.role !== "STAFF" ||

@@ -1,3 +1,13 @@
+/**
+ * `/onboarding` - Attendee profile editor.
+ *
+ * Not part of the main MVP flow yet (the demo user is already populated
+ * by the seed), but kept around because real Google OAuth signups will
+ * need a place to fill in DOB/gender/phone after the first login.
+ *
+ * The page prefills from `/api/attendee/wristbands` (which also returns
+ * the attendee profile) and saves through `/api/onboarding`.
+ */
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
@@ -13,6 +23,8 @@ export default function OnboardingPage() {
   const [messageType, setMessageType] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState(false);
 
+  // Prefill the form with the attendee's current profile so they only
+  // have to edit fields they actually want to change.
   useEffect(() => {
     async function loadProfile() {
       try {
@@ -35,6 +47,8 @@ export default function OnboardingPage() {
         };
 
         setName(data.attendee?.name ?? "");
+        // The native `<input type="date">` expects `YYYY-MM-DD`. Slice off
+        // the time portion of the ISO string the API returns.
         setDob(data.attendee?.dob ? data.attendee.dob.slice(0, 10) : "");
         setGender(data.attendee?.gender ?? "");
         setPhone(data.attendee?.phone ?? "");

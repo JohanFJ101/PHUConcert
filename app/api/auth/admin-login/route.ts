@@ -1,3 +1,16 @@
+/**
+ * POST /api/auth/admin-login
+ *
+ * Username/password sign-in for ADMIN accounts only. Mirrors the staff
+ * login endpoint but only accepts rows where `role === "ADMIN"`, so a
+ * staff member who knows their own password cannot unlock the admin
+ * console here.
+ *
+ * Request body: { username: string; password: string }
+ * Response: { success: true } on success; `phu_session` cookie is set.
+ *           `{ success: false, message }` with 400/401/500 on failure.
+ */
+
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { jsonError, readJsonObject } from "@/lib/http";
@@ -25,6 +38,8 @@ export async function POST(request: Request) {
       }
     });
 
+    // One generic message: do not reveal whether the username exists or
+    // whether the password is wrong.
     if (
       !admin ||
       admin.role !== "ADMIN" ||

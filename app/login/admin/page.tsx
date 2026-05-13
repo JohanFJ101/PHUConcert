@@ -1,3 +1,10 @@
+/**
+ * `/login/admin` - Username/password sign-in for operators.
+ *
+ * Mirrors the staff login page but hits `/api/auth/admin-login`, which
+ * only accepts rows with role `ADMIN`. On success the user lands on the
+ * admin dashboard.
+ */
 "use client";
 
 import { FormEvent, useState } from "react";

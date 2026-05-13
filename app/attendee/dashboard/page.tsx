@@ -1,3 +1,17 @@
+/**
+ * `/attendee/dashboard` - The attendee wallet.
+ *
+ * Three responsibilities:
+ *   1. Show the active wristband (token + status + balance).
+ *   2. Let the user top up by either a preset or a freely typed amount.
+ *   3. Show transaction history.
+ *
+ * Data is fetched from `/api/attendee/wristbands` and
+ * `/api/attendee/transactions` on mount, then re-fetched every 2 seconds
+ * so that a charge taken on the staff phone appears here almost
+ * immediately. There is no websocket; polling is good enough for an MVP
+ * with low concurrency.
+ */
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -26,6 +40,7 @@ type Transaction = {
   createdAt: string;
 };
 
+/** Quick-fill values for the top-up input; the user can also type anything. */
 const TOPUP_PRESETS = [100, 250, 500];
 
 export default function AttendeeDashboardPage() {
@@ -39,8 +54,20 @@ export default function AttendeeDashboardPage() {
   const [topupAmount, setTopupAmount] = useState("100");
   const [topupLoading, setTopupLoading] = useState(false);
 
+  // Attendees can have multiple wristbands in the schema, but the MVP UI
+  // only renders the first one. Memoising keeps the value stable for the
+  // top-up handler.
   const activeWristband = useMemo(() => wristbands[0] ?? null, [wristbands]);
 
+  /**
+   * Fetch wristbands and transactions in parallel and update local state.
+   * Wrapped in `useCallback` because the polling effect uses it as a
+   * dependency and we want a stable identity.
+   *
+   * On 401 we redirect to `/login`; on transport error we surface a
+   * banner without wiping the existing data so a brief network blip does
+   * not blank the screen.
+   */
   const loadData = useCallback(async () => {
     try {
       const [wristbandResponse, transactionResponse] = await Promise.all([
@@ -78,6 +105,8 @@ export default function AttendeeDashboardPage() {
     }
   }, [router]);
 
+  // Initial load + 2s polling. The interval is cleared on unmount so the
+  // attendee navigating away doesn't keep hammering the API.
   useEffect(() => {
     void loadData();
     const interval = window.setInterval(() => {
@@ -87,6 +116,10 @@ export default function AttendeeDashboardPage() {
     return () => window.clearInterval(interval);
   }, [loadData]);
 
+  /**
+   * Validate the top-up amount client-side and submit it. The server
+   * re-validates everything, so this check is purely a UX nicety.
+   */
   async function topUp() {
     if (!activeWristband) {
       setMessageType("error");
@@ -125,6 +158,8 @@ export default function AttendeeDashboardPage() {
 
       setMessageType("success");
       setMessage(`Added ${amountCredits} credits`);
+      // Reload immediately so the balance and history update without
+      // waiting for the next poll tick.
       await loadData();
     } catch {
       setMessageType("error");

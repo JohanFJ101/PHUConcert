@@ -1,3 +1,10 @@
+/**
+ * `/login/staff` - Username/password sign-in for shop staff.
+ *
+ * Posts to `/api/auth/staff-login` and on success redirects to the staff
+ * shop. The endpoint rejects ADMIN accounts, so an admin trying this
+ * form will see the same generic "Invalid username or password" error.
+ */
 "use client";
 
 import { FormEvent, useState } from "react";

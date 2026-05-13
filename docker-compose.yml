@@ -1,16 +1,31 @@
+# Local PostgreSQL for development.
+#
+# Run with `docker compose up -d` to bring the database up in the
+# background. The credentials, database name, and exposed port match the
+# `DATABASE_URL` in `.env.example` so a fresh checkout works out of the
+# box. Data lives in the named volume `phuconcert-postgres-data` so it
+# survives container restarts.
 services:
   postgres:
     image: postgres:16
     container_name: phuconcert-postgres
+    # Keep the database running after a reboot, but don't fight the user
+    # if they explicitly stop it.
     restart: unless-stopped
     environment:
       POSTGRES_USER: phuconcert
       POSTGRES_PASSWORD: phuconcert
       POSTGRES_DB: phuconcert
     ports:
+      # Host port matches the default Postgres port so the Prisma client
+      # can connect using the URL from `.env` without translation.
       - "5432:5432"
     volumes:
       - phuconcert-postgres-data:/var/lib/postgresql/data
 
 volumes:
+  # Named volume so data persists across `docker compose down`; use
+  # `docker compose down -v` to wipe the database when you want a clean
+  # slate (you'll then need to re-run `npm run prisma:migrate` and
+  # `npm run prisma:seed`).
   phuconcert-postgres-data:

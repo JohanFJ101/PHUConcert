@@ -1,3 +1,12 @@
+/**
+ * `/login` - Role chooser.
+ *
+ * The shared entry point for every device. We do not auto-pick a role
+ * because the same laptop/phone can be used as attendee, staff, or admin
+ * at different points during the festival. Each option links to its own
+ * themed login page under `/login/<role>`.
+ */
+
 import Link from "next/link";
 
 export default function LoginPage() {

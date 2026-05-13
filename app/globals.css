@@ -1,3 +1,21 @@
+/*
+ * Global styles for PHUConcert.
+ *
+ * Organised top-to-bottom:
+ *   1. CSS custom properties for the shared color palette.
+ *   2. Element resets and base typography.
+ *   3. Utility/layout helpers used across pages (.page, .stack, .card,
+ *      .row, .split, .header-actions, ...).
+ *   4. Component-specific classes (.transaction, .admin-row, .item-button).
+ *   5. Role-themed login pages (.role-page + .role-attendee /
+ *      .role-staff / .role-admin) that override --role-* variables to
+ *      give each role its own color treatment.
+ *
+ * Everything is plain CSS — no Tailwind/PostCSS plugins — because the
+ * surface area is small and the MVP needs to stay easy to read.
+ */
+
+/* ---- Shared palette --------------------------------------------------- */
 :root {
   color-scheme: light;
   --bg: #f6f7f9;
@@ -11,6 +29,7 @@
   --success: #067647;
 }
 
+/* ---- Element resets and base typography ------------------------------- */
 * {
   box-sizing: border-box;
 }
@@ -46,6 +65,7 @@ a {
   font-weight: 700;
 }
 
+/* Anchor styled as a primary button (used on the role chooser). */
 .button-link {
   border-radius: 8px;
   background: var(--primary);
@@ -80,6 +100,8 @@ select {
   padding: 0.75rem;
 }
 
+/* Labels are rendered as a vertical stack of "caption + control" using
+   `display: grid` so the gap is consistent regardless of control size. */
 label {
   display: grid;
   gap: 0.35rem;
@@ -88,18 +110,24 @@ label {
   font-weight: 700;
 }
 
+/* ---- Layout utilities ------------------------------------------------- */
+
+/* `.page` is the wide layout used by the attendee/staff/admin dashboards. */
 .page {
   width: min(960px, 100%);
   margin: 0 auto;
   padding: 1rem;
 }
 
+/* `.narrow-page` is the centered, narrower layout used by login pages
+   and onboarding so forms don't stretch on desktop. */
 .narrow-page {
   width: min(520px, 100%);
   margin: 0 auto;
   padding: 1rem;
 }
 
+/* Vertical stack with consistent spacing. */
 .stack {
   display: grid;
   gap: 1rem;
@@ -112,6 +140,7 @@ label {
   padding: 1rem;
 }
 
+/* Horizontal flex row with wrap; used for inline groups of buttons. */
 .row {
   align-items: center;
   display: flex;
@@ -119,6 +148,8 @@ label {
   gap: 0.75rem;
 }
 
+/* Auto-fit responsive grid: 2-4 columns on desktop, single column on
+   narrow screens. Used for the dashboard header tiles. */
 .split {
   display: grid;
   gap: 1rem;
@@ -134,6 +165,8 @@ label {
   font-weight: 800;
 }
 
+/* Success/error banners. The `.message.success` and `.message.error`
+   modifiers below control color. */
 .message {
   border-radius: 8px;
   padding: 0.75rem;
@@ -149,6 +182,10 @@ label {
   color: var(--danger);
 }
 
+/* ---- Component classes ----------------------------------------------- */
+
+/* Menu item button on the staff shop page. The `.selected` modifier is
+   applied to the currently chosen item. */
 .item-button {
   background: #ffffff;
   border: 1px solid var(--border);
@@ -165,6 +202,8 @@ label {
   color: var(--text);
 }
 
+/* Transaction list row used by both the attendee history and the admin
+   recent transactions section. */
 .transaction {
   border-top: 1px solid var(--border);
   display: grid;
@@ -176,6 +215,8 @@ label {
   border-top: 0;
 }
 
+/* Two-column grid for the admin dashboard's attendee/staff lists; the
+   media query below collapses it to one column on narrow screens. */
 .admin-row {
   align-items: start;
   border-top: 1px solid var(--border);
@@ -189,6 +230,7 @@ label {
   border-top: 0;
 }
 
+/* Title + action buttons header used at the top of every dashboard. */
 .header-actions {
   align-items: center;
   display: flex;
@@ -196,6 +238,7 @@ label {
   gap: 1rem;
 }
 
+/* Neutral-toned button used for logout/refresh actions. */
 .secondary-button {
   background: #e7ebf0;
   color: var(--text);
@@ -211,7 +254,14 @@ label {
   }
 }
 
-/* Role-themed login pages */
+/* ---- Role-themed login pages -----------------------------------------
+ *
+ * Each login page wraps its content in `.role-page.role-<role>`. The
+ * `.role-*` classes set CSS custom properties (--role-bg, --role-accent,
+ * etc.) which the rule sets below consume. Adding a new role-themed
+ * surface elsewhere in the app is therefore just a matter of applying
+ * one of these classes; no per-page colors need to be duplicated.
+ */
 .role-page {
   min-height: 100vh;
   display: grid;
@@ -237,6 +287,8 @@ label {
   text-decoration: underline;
 }
 
+/* Hero banner at the top of the login card. Themed per role through
+   --role-hero / --role-hero-text. */
 .role-hero {
   background: var(--role-hero, var(--card));
   color: var(--role-hero-text, var(--text));

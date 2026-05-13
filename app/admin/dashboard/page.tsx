@@ -1,3 +1,19 @@
+/**
+ * `/admin/dashboard` - Operator overview.
+ *
+ * Single-page view that summarises the entire event:
+ *   - Header tiles: counts of attendees, staff, admins, and transactions
+ *     plus the credit totals (balance on wristbands, top-ups, spend).
+ *   - Attendee table with linked wristbands.
+ *   - Staff/admin table with shop assignment.
+ *   - The latest 100 transactions, newest first.
+ *
+ * All numbers come from `/api/admin/overview` (one round-trip). The page
+ * does not poll; a manual "Refresh" button is enough for the MVP.
+ *
+ * If the session is missing or has the wrong role, the API responds with
+ * 401/403 and we route back to `/login/admin`.
+ */
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -46,6 +62,8 @@ type Transaction = {
   itemName: string | null;
 };
 
+// Shape returned by `/api/admin/overview`. Keep this in sync with the
+// route handler.
 type Overview = {
   totals: {
     attendees: number;
@@ -67,6 +85,10 @@ export default function AdminDashboardPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  /**
+   * One-shot fetch that fills every section of the page. Wrapped in
+   * `useCallback` so the "Refresh" button has a stable handler.
+   */
   const loadOverview = useCallback(async () => {
     try {
       const response = await fetch("/api/admin/overview", { cache: "no-store" });

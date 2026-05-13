@@ -1,3 +1,17 @@
+// PHUConcert database schema.
+//
+// Conventions used throughout:
+//   * Every model has a cuid primary key and `createdAt`/`updatedAt` audit
+//     columns where they are useful.
+//   * Money is represented as integer "credits" (no fractional amounts) so
+//     that all balance math is exact.
+//   * Foreign keys to operational tables use `onDelete: SetNull` so that
+//     removing a Staff/Shop/Item record does NOT cascade and erase the
+//     historical Transaction rows that reference them.
+//   * Foreign keys to the data-owner (`User` -> `Wristband`, `Wristband` ->
+//     `Transaction`) use `onDelete: Cascade` so removing the parent also
+//     removes data that only makes sense alongside it.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,17 +21,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Application-level roles. Used on both `User` and `Staff` for symmetry,
+// but in practice `User` is always `ATTENDEE` and `Staff` is either
+// `STAFF` or `ADMIN`.
 enum Role {
   ATTENDEE
   STAFF
   ADMIN
 }
 
+// Festival attendee. Created by mock login today; in the future this is
+// where Google OAuth profile data would land.
 model User {
   id         String      @id @default(cuid())
+  // Reserved for a future real Google login. Unique-but-nullable so we can
+  // have demo users without a Google account.
   googleSub  String?     @unique
   email      String      @unique
   name       String
+  // Date of birth is required for age-restricted purchases (e.g. alcohol).
+  // Nullable so demo accounts and partially onboarded users still work.
   dob        DateTime?
   gender     String?
   phone      String?
@@ -27,11 +50,17 @@ model User {
   updatedAt  DateTime    @updatedAt
 }
 
+// Operator account (staff or admin). Lives in its own table because it has
+// password-based auth and shop assignment, whereas `User` is OAuth-shaped.
 model Staff {
   id           String        @id @default(cuid())
   username     String        @unique
+  // bcrypt hash; never returned to the client.
   passwordHash String
   role         Role          @default(STAFF)
+  // STAFF accounts must have a shop; ADMIN accounts have no shop. The FK
+  // is nullable so admins can exist, and the staff-charge route enforces
+  // that STAFF rows actually have a `shopId` at runtime.
   shopId       String?
   shop         Shop?         @relation(fields: [shopId], references: [id], onDelete: SetNull)
   transactions Transaction[]
@@ -39,9 +68,13 @@ model Staff {
   updatedAt    DateTime      @updatedAt
 }
 
+// A counter that sells items (e.g. "Food Counter", "Bar Counter"). One
+// shop has many staff members and many menu items.
 model Shop {
   id           String        @id @default(cuid())
   name         String
+  // Free-form category, but seed data uses values like "FOOD" and
+  // "ALCOHOL" which the UI surfaces on the admin dashboard.
   category     String
   staffMembers Staff[]
   items        Item[]
@@ -50,36 +83,54 @@ model Shop {
   updatedAt    DateTime      @updatedAt
 }
 
+// A single menu item attached to a shop.
 model Item {
   id             String        @id @default(cuid())
   shopId         String
+  // Items belong to a shop; when a shop is deleted, its items go with it.
   shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name           String
   priceCredits   Int
   category       String
+  // When true, the staff charge route checks that the attendee is 21+.
   ageRestricted  Boolean       @default(false)
+  // Soft-disable an item without deleting it; the shop endpoint filters
+  // these out so they never appear on the staff menu.
   active         Boolean       @default(true)
   transactions   Transaction[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
 
+// Physical wristband linked to an attendee. Holds the spendable credit
+// balance and is identified by `qrToken` (the value staff scan/type in).
 model Wristband {
   id             String        @id @default(cuid())
+  // The user-visible identifier. Indexed for fast lookup on charge.
   qrToken        String        @unique
   userId         String
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Always non-negative; charges check `balanceCredits >= priceCredits`
+  // inside a serializable transaction to prevent double-spend.
   balanceCredits Int           @default(0)
+  // Free-form status string; "ACTIVE" is the only value the app issues
+  // today. Anything else is treated as inactive by the charge route.
   status         String        @default("ACTIVE")
   transactions   Transaction[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
 
+// Ledger of every credit movement. Positive amounts are top-ups; negative
+// amounts are purchases. This is the source of truth for the attendee
+// history view and the admin dashboard totals.
 model Transaction {
   id            String    @id @default(cuid())
   wristbandId   String
   wristband     Wristband @relation(fields: [wristbandId], references: [id], onDelete: Cascade)
+  // Optional FKs to the operator/shop/item involved. Nullable so that
+  // top-ups (which have no staff) and historical rows for deleted
+  // staff/shops/items still exist intact.
   staffId       String?
   staff         Staff?    @relation(fields: [staffId], references: [id], onDelete: SetNull)
   shopId        String?
@@ -87,10 +138,14 @@ model Transaction {
   itemId        String?
   item          Item?     @relation(fields: [itemId], references: [id], onDelete: SetNull)
   amountCredits Int
+  // Free-form discriminator; the app uses "TOPUP" and "PURCHASE".
   type          String
   description   String?
   createdAt     DateTime  @default(now())
 
+  // Composite indexes for the two most common reads:
+  //  * attendee transaction history ordered by date
+  //  * per-shop reporting ordered by date
   @@index([wristbandId, createdAt])
   @@index([shopId, createdAt])
 }

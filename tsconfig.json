@@ -1,3 +1,17 @@
+// TypeScript configuration for a Next.js App Router project.
+//
+// Notable choices:
+//   * `strict: true`             - opt into full TypeScript strictness.
+//   * `noEmit: true`             - Next.js + bundler do the actual emit.
+//   * `module: esnext`           - modern ES modules for tree-shaking.
+//   * `moduleResolution: bundler` - lets imports work without `.ts/.tsx`
+//                                   extensions, matching Next's bundler.
+//   * `jsx: react-jsx`           - new JSX transform, no React import needed.
+//   * `paths: { "@/*": ... }`    - enables `@/lib/...` imports from
+//                                   anywhere in the repo (configured to
+//                                   resolve from the project root).
+//   * `plugins: [{ name: next }]` - turns on Next's editor plugin so the
+//                                   IDE understands App Router conventions.
 {
   "compilerOptions": {
     "lib": [
