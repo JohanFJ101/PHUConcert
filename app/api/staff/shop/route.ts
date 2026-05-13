@@ -48,7 +48,7 @@ export async function GET() {
           success: false,
           message: "Staff shop not found"
         },
-        { status: 401 }
+        { status: 403 }
       );
     }
 

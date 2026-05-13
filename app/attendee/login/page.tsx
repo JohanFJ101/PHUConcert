@@ -13,19 +13,23 @@ export default function AttendeeLoginPage() {
     setLoading(true);
     setMessage(null);
 
-    const response = await fetch("/api/auth/mock-attendee-login", {
-      method: "POST"
-    });
-    const data = (await response.json()) as { success?: boolean; message?: string };
+    try {
+      const response = await fetch("/api/auth/mock-attendee-login", {
+        method: "POST"
+      });
+      const data = (await response.json()) as { success?: boolean; message?: string };
 
-    setLoading(false);
+      if (!response.ok || !data.success) {
+        setMessage(data.message ?? "Could not log in attendee");
+        return;
+      }
 
-    if (!response.ok || !data.success) {
-      setMessage(data.message ?? "Could not log in attendee");
-      return;
+      router.push("/attendee/dashboard");
+    } catch {
+      setMessage("Network error. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    router.push("/attendee/dashboard");
   }
 
   return (

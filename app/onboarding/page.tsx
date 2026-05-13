@@ -15,28 +15,32 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     async function loadProfile() {
-      const response = await fetch("/api/attendee/wristbands", { cache: "no-store" });
-      if (response.status === 401) {
-        router.push("/login");
-        return;
-      }
-      if (!response.ok) {
-        return;
-      }
+      try {
+        const response = await fetch("/api/attendee/wristbands", { cache: "no-store" });
+        if (response.status === 401) {
+          router.push("/login");
+          return;
+        }
+        if (!response.ok) {
+          return;
+        }
 
-      const data = (await response.json()) as {
-        attendee?: {
-          name?: string;
-          dob?: string | null;
-          gender?: string | null;
-          phone?: string | null;
+        const data = (await response.json()) as {
+          attendee?: {
+            name?: string;
+            dob?: string | null;
+            gender?: string | null;
+            phone?: string | null;
+          };
         };
-      };
 
-      setName(data.attendee?.name ?? "");
-      setDob(data.attendee?.dob ? data.attendee.dob.slice(0, 10) : "");
-      setGender(data.attendee?.gender ?? "");
-      setPhone(data.attendee?.phone ?? "");
+        setName(data.attendee?.name ?? "");
+        setDob(data.attendee?.dob ? data.attendee.dob.slice(0, 10) : "");
+        setGender(data.attendee?.gender ?? "");
+        setPhone(data.attendee?.phone ?? "");
+      } catch {
+        // Network error — leave fields empty, user can retry by saving
+      }
     }
 
     void loadProfile();
@@ -47,30 +51,35 @@ export default function OnboardingPage() {
     setLoading(true);
     setMessage(null);
 
-    const response = await fetch("/api/onboarding", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        name,
-        dob,
-        gender,
-        phone
-      })
-    });
-    const data = (await response.json()) as { success?: boolean; message?: string };
+    try {
+      const response = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name,
+          dob,
+          gender,
+          phone
+        })
+      });
+      const data = (await response.json()) as { success?: boolean; message?: string };
 
-    setLoading(false);
+      if (!response.ok || !data.success) {
+        setMessageType("error");
+        setMessage(data.message ?? "Profile update failed");
+        return;
+      }
 
-    if (!response.ok || !data.success) {
+      setMessageType("success");
+      setMessage("Profile updated");
+    } catch {
       setMessageType("error");
-      setMessage(data.message ?? "Profile update failed");
-      return;
+      setMessage("Network error. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    setMessageType("success");
-    setMessage("Profile updated");
   }
 
   return (

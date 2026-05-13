@@ -35,23 +35,28 @@ export default function StaffShopPage() {
 
   useEffect(() => {
     async function loadShop() {
-      const response = await fetch("/api/staff/shop", { cache: "no-store" });
-      if (response.status === 401 || response.status === 403) {
-        router.push("/login");
-        return;
-      }
+      try {
+        const response = await fetch("/api/staff/shop", { cache: "no-store" });
+        if (response.status === 401 || response.status === 403) {
+          router.push("/login");
+          return;
+        }
 
-      const data = (await response.json()) as { shop?: Shop; message?: string };
-      if (!response.ok || !data.shop) {
+        const data = (await response.json()) as { shop?: Shop; message?: string };
+        if (!response.ok || !data.shop) {
+          setMessageType("error");
+          setMessage(data.message ?? "Could not load shop");
+          return;
+        }
+
+        setShop(data.shop);
+        setSelectedItemId(data.shop.items[0]?.id ?? "");
+      } catch {
         setMessageType("error");
-        setMessage(data.message ?? "Could not load shop");
+        setMessage("Network error. Could not load shop.");
+      } finally {
         setLoading(false);
-        return;
       }
-
-      setShop(data.shop);
-      setSelectedItemId(data.shop.items[0]?.id ?? "");
-      setLoading(false);
     }
 
     void loadShop();
@@ -67,33 +72,38 @@ export default function StaffShopPage() {
     setCharging(true);
     setMessage(null);
 
-    const response = await fetch("/api/staff/charge", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        qrToken,
-        itemId: selectedItemId
-      })
-    });
-    const data = (await response.json()) as {
-      success?: boolean;
-      message?: string;
-      newBalance?: number;
-    };
+    try {
+      const response = await fetch("/api/staff/charge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          qrToken,
+          itemId: selectedItemId
+        })
+      });
+      const data = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        newBalance?: number;
+      };
 
-    setCharging(false);
+      if (!response.ok || !data.success) {
+        setMessageType("error");
+        setMessage(data.message ?? "Charge failed");
+        return;
+      }
 
-    if (!response.ok || !data.success) {
+      setMessageType("success");
+      setMessage(data.message ?? "Charge succeeded");
+      setQrToken("");
+    } catch {
       setMessageType("error");
-      setMessage(data.message ?? "Charge failed");
-      return;
+      setMessage("Network error. Please try again.");
+    } finally {
+      setCharging(false);
     }
-
-    setMessageType("success");
-    setMessage(data.message ?? "Charge succeeded");
-    setQrToken("");
   }
 
   async function logout() {

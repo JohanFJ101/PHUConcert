@@ -42,34 +42,40 @@ export default function AttendeeDashboardPage() {
   const activeWristband = useMemo(() => wristbands[0] ?? null, [wristbands]);
 
   const loadData = useCallback(async () => {
-    const [wristbandResponse, transactionResponse] = await Promise.all([
-      fetch("/api/attendee/wristbands", { cache: "no-store" }),
-      fetch("/api/attendee/transactions", { cache: "no-store" })
-    ]);
+    try {
+      const [wristbandResponse, transactionResponse] = await Promise.all([
+        fetch("/api/attendee/wristbands", { cache: "no-store" }),
+        fetch("/api/attendee/transactions", { cache: "no-store" })
+      ]);
 
-    if (wristbandResponse.status === 401 || transactionResponse.status === 401) {
-      router.push("/login");
-      return;
-    }
+      if (wristbandResponse.status === 401 || transactionResponse.status === 401) {
+        router.push("/login");
+        return;
+      }
 
-    if (!wristbandResponse.ok || !transactionResponse.ok) {
+      if (!wristbandResponse.ok || !transactionResponse.ok) {
+        setMessageType("error");
+        setMessage("Could not refresh wallet data");
+        return;
+      }
+
+      const wristbandData = (await wristbandResponse.json()) as {
+        attendee?: Attendee;
+        wristbands: Wristband[];
+      };
+      const transactionData = (await transactionResponse.json()) as {
+        transactions: Transaction[];
+      };
+
+      setAttendee(wristbandData.attendee ?? null);
+      setWristbands(wristbandData.wristbands);
+      setTransactions(transactionData.transactions);
+    } catch {
       setMessageType("error");
-      setMessage("Could not refresh wallet data");
-      return;
+      setMessage("Network error. Could not refresh wallet data.");
+    } finally {
+      setLoading(false);
     }
-
-    const wristbandData = (await wristbandResponse.json()) as {
-      attendee?: Attendee;
-      wristbands: Wristband[];
-    };
-    const transactionData = (await transactionResponse.json()) as {
-      transactions: Transaction[];
-    };
-
-    setAttendee(wristbandData.attendee ?? null);
-    setWristbands(wristbandData.wristbands);
-    setTransactions(transactionData.transactions);
-    setLoading(false);
   }, [router]);
 
   useEffect(() => {
@@ -98,29 +104,34 @@ export default function AttendeeDashboardPage() {
     setTopupLoading(true);
     setMessage(null);
 
-    const response = await fetch("/api/attendee/topup", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        wristbandId: activeWristband.id,
-        amountCredits
-      })
-    });
-    const data = (await response.json()) as { success?: boolean; message?: string };
+    try {
+      const response = await fetch("/api/attendee/topup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          wristbandId: activeWristband.id,
+          amountCredits
+        })
+      });
+      const data = (await response.json()) as { success?: boolean; message?: string };
 
-    setTopupLoading(false);
+      if (!response.ok || !data.success) {
+        setMessageType("error");
+        setMessage(data.message ?? "Top-up failed");
+        return;
+      }
 
-    if (!response.ok || !data.success) {
+      setMessageType("success");
+      setMessage(`Added ${amountCredits} credits`);
+      await loadData();
+    } catch {
       setMessageType("error");
-      setMessage(data.message ?? "Top-up failed");
-      return;
+      setMessage("Network error. Please try again.");
+    } finally {
+      setTopupLoading(false);
     }
-
-    setMessageType("success");
-    setMessage(`Added ${amountCredits} credits`);
-    await loadData();
   }
 
   async function logout() {

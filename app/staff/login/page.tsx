@@ -16,26 +16,30 @@ export default function StaffLoginPage() {
     setLoading(true);
     setMessage(null);
 
-    const response = await fetch("/api/auth/staff-login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        username,
-        password
-      })
-    });
-    const data = (await response.json()) as { success?: boolean; message?: string };
+    try {
+      const response = await fetch("/api/auth/staff-login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          username,
+          password
+        })
+      });
+      const data = (await response.json()) as { success?: boolean; message?: string };
 
-    setLoading(false);
+      if (!response.ok || !data.success) {
+        setMessage(data.message ?? "Could not log in staff");
+        return;
+      }
 
-    if (!response.ok || !data.success) {
-      setMessage(data.message ?? "Could not log in staff");
-      return;
+      router.push("/staff/shop");
+    } catch {
+      setMessage("Network error. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    router.push("/staff/shop");
   }
 
   return (

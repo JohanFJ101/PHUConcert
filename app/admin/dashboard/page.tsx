@@ -68,21 +68,25 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   const loadOverview = useCallback(async () => {
-    const response = await fetch("/api/admin/overview", { cache: "no-store" });
-    if (response.status === 401 || response.status === 403) {
-      router.push("/admin/login");
-      return;
-    }
+    try {
+      const response = await fetch("/api/admin/overview", { cache: "no-store" });
+      if (response.status === 401 || response.status === 403) {
+        router.push("/admin/login");
+        return;
+      }
 
-    const data = (await response.json()) as Overview & { message?: string };
-    if (!response.ok) {
-      setMessage(data.message ?? "Could not load admin data");
+      const data = (await response.json()) as Overview & { message?: string };
+      if (!response.ok) {
+        setMessage(data.message ?? "Could not load admin data");
+        return;
+      }
+
+      setOverview(data);
+    } catch {
+      setMessage("Network error. Could not load admin data.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setOverview(data);
-    setLoading(false);
   }, [router]);
 
   useEffect(() => {
