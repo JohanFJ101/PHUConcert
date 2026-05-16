@@ -287,3 +287,12 @@ Summary:
 - Recommended separating the app into six domains: identity, ticket ingestion, wristband issuance/linking, wallet/payments, staff POS/entry operations, and admin reporting.
 - Recommended implementing ticket-provider access through an internal `ExternalTicket` model plus provider adapters, starting with CSV/manual import and later swapping to official API/webhook access if BookMyShow or another provider grants it.
 - Recommended building in phases: stabilize auth/schema, add ticket import/linking, improve attendee dashboard, add staff entry/POS flows, expand admin operations, then harden security/deployment.
+
+#### 2026-05-16 - Local Production OAuth Redirect Fix
+
+Codex fixed a Google OAuth failure that appeared under `npm run start`.
+
+Summary:
+- Removed the active placeholder `GOOGLE_OAUTH_REDIRECT_URI` from `.env` and `.env.example`; only one redirect URI should be active at a time.
+- Added `APP_BASE_URL="http://localhost:3000"` to the active local `.env` so production-start redirects resolve to the same browser origin used in Google OAuth.
+- Changed auth and OAuth state cookies to use Secure only when the configured browser-facing app URL is HTTPS, so local `next start` over HTTP behaves correctly while real HTTPS deployments still get Secure cookies.

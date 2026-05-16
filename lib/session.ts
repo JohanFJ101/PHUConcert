@@ -51,6 +51,29 @@ function getSessionSecret() {
   return process.env.SESSION_SECRET || "local-dev-session-secret-change-me";
 }
 
+/**
+ * Decide whether auth cookies should be marked Secure.
+ *
+ * `npm run start` runs with `NODE_ENV=production`, but this app is often
+ * tested locally over plain HTTP. In that local-production case, the
+ * browser-facing `APP_BASE_URL` is the better signal. Real deployments should
+ * set it to an `https://` URL, which keeps Secure cookies enabled.
+ */
+export function shouldUseSecureCookies() {
+  const configuredBaseUrl =
+    process.env.APP_BASE_URL ?? process.env.NEXT_PUBLIC_APP_BASE_URL ?? "";
+
+  if (configuredBaseUrl) {
+    try {
+      return new URL(configuredBaseUrl).protocol === "https:";
+    } catch {
+      return process.env.NODE_ENV === "production";
+    }
+  }
+
+  return process.env.NODE_ENV === "production";
+}
+
 function base64UrlEncode(value: string) {
   return Buffer.from(value, "utf8").toString("base64url");
 }
@@ -145,7 +168,7 @@ export async function getSession() {
  *   - `httpOnly`: hides the cookie from client-side JavaScript.
  *   - `sameSite: "lax"`: blocks most CSRF while still allowing top-level
  *     navigation from external sites.
- *   - `secure` in production: cookie only travels over HTTPS.
+ *   - `secure` when the browser-facing app URL uses HTTPS.
  *   - 7-day max age: balances "stay signed in for the festival" with not
  *     leaving sessions valid forever.
  */
@@ -155,7 +178,7 @@ export function setSessionCookie(response: NextResponse, session: AppSession) {
     value: createSessionToken(session),
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     path: "/",
     maxAge: 60 * 60 * 24 * 7
   });
@@ -171,7 +194,7 @@ export function clearSessionCookie(response: NextResponse) {
     value: "",
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     path: "/",
     maxAge: 0
   });

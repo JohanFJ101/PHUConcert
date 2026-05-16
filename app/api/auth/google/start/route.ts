@@ -9,9 +9,9 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
-  GOOGLE_OAUTH_STATE_COOKIE,
   attendeeLoginRedirect,
-  getGoogleOAuthConfig
+  getGoogleOAuthConfig,
+  setGoogleOAuthStateCookie
 } from "@/lib/google-oauth";
 
 export async function GET(request: NextRequest) {
@@ -30,14 +30,6 @@ export async function GET(request: NextRequest) {
   authorizationUrl.searchParams.set("prompt", "select_account");
 
   const response = NextResponse.redirect(authorizationUrl);
-  response.cookies.set({
-    name: GOOGLE_OAUTH_STATE_COOKIE,
-    value: state,
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 10
-  });
+  setGoogleOAuthStateCookie(response, state);
   return response;
 }

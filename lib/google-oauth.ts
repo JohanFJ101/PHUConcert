@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { shouldUseSecureCookies } from "@/lib/session";
 
 export const GOOGLE_OAUTH_STATE_COOKIE = "phu_google_oauth_state";
 
@@ -52,13 +53,25 @@ export function attendeeLoginRedirect(request: NextRequest, errorCode: string) {
   return NextResponse.redirect(redirectUrl);
 }
 
+export function setGoogleOAuthStateCookie(response: NextResponse, state: string) {
+  response.cookies.set({
+    name: GOOGLE_OAUTH_STATE_COOKIE,
+    value: state,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: shouldUseSecureCookies(),
+    path: "/",
+    maxAge: 60 * 10
+  });
+}
+
 export function clearGoogleOAuthStateCookie(response: NextResponse) {
   response.cookies.set({
     name: GOOGLE_OAUTH_STATE_COOKIE,
     value: "",
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     path: "/",
     maxAge: 0
   });
