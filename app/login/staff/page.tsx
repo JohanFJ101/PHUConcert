@@ -79,8 +79,7 @@ export default function StaffLoginPage() {
             />
           </label>
           <div className="role-hint">
-            Staff accounts are tied to a specific shop. If you need admin access,
-            use the admin login page instead.
+            Enter the Username and password provided.
           </div>
           <button type="submit" className="role-button" disabled={loading}>
             {loading ? "Logging in..." : "Sign in to shop"}

@@ -259,3 +259,31 @@ Summary:
 - Intentionally left untouched: `package.json` (strict JSON, no comments allowed), `next-env.d.ts` (auto-generated, explicit "do not edit" comment), and every `prisma/migrations/**/migration.sql` (Prisma checksums these files; modifying them would break `prisma migrate`).
 - Expanded this file with: high-level architecture diagram, directory map for every editable file, expanded auth/session description, key implementation patterns, gotchas, and verification steps.
 - Verified the typed configs and pages by running `npm run lint`.
+
+#### 2026-05-15 - OAuth And Third-Party Ticket Linking Architecture
+
+Codex discussed how attendee OAuth should link to tickets bought on third-party platforms such as BookMyShow.
+
+Summary:
+- Clarified that OAuth proves control of an email address, but does not itself provide ticket-purchase details from the ticketing provider.
+- Recommended ingesting third-party ticket data through a provider API, webhook, CSV/manual import, or staff ticket scan flow, then linking rows to verified OAuth users by normalized verified email.
+- Recommended future schema additions around external ticket/provider records, ticket status, and user-ticket linking before showing purchase details in `/attendee/dashboard`.
+- Noted important edge cases: one email buying multiple tickets, transfers, unverified emails, provider API availability, and fallback claim flows using ticket codes or staff-assisted linking.
+
+#### 2026-05-15 - BookMyShow API Availability Check
+
+Codex checked public BookMyShow-facing sources for whether there is an official API suitable for importing purchaser/ticket details into PHUConcert.
+
+Summary:
+- No public self-serve BookMyShow developer API for order/ticket lookup was found in the available public sources.
+- BookMyShow does expose partner/listing channels and a restricted partner app, which suggests organizer/partner tooling exists but is not the same as an open API.
+- Recommended treating BookMyShow integration as a private partnership discussion; for MVP/pilot, use CSV/manual import or staff ticket scan/claim flow until official partner API/webhook/export access is confirmed.
+
+#### 2026-05-15 - Full Web App Planning Direction
+
+Codex proposed the full product architecture before further coding.
+
+Summary:
+- Recommended separating the app into six domains: identity, ticket ingestion, wristband issuance/linking, wallet/payments, staff POS/entry operations, and admin reporting.
+- Recommended implementing ticket-provider access through an internal `ExternalTicket` model plus provider adapters, starting with CSV/manual import and later swapping to official API/webhook access if BookMyShow or another provider grants it.
+- Recommended building in phases: stabilize auth/schema, add ticket import/linking, improve attendee dashboard, add staff entry/POS flows, expand admin operations, then harden security/deployment.
