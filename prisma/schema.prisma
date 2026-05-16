@@ -30,13 +30,18 @@ enum Role {
   ADMIN
 }
 
-// Festival attendee. Created by mock login today; in the future this is
-// where Google OAuth profile data would land.
+// Festival attendee. Created either by the admin ticketing CSV import or
+// by the demo seed. Google OAuth only links to rows that already exist here
+// so random Google accounts cannot self-register into the event.
 model User {
   id         String      @id @default(cuid())
-  // Reserved for a future real Google login. Unique-but-nullable so we can
-  // have demo users without a Google account.
+  // Google OAuth subject, captured on first successful attendee OAuth login.
+  // Unique-but-nullable so imported attendees do not need to authenticate
+  // until they arrive.
   googleSub  String?     @unique
+  // Unique id number from BookMyShow/ticketing import. For the current MVP
+  // this is also used as the initial wristband QR token.
+  ticketId   String?     @unique
   email      String      @unique
   name       String
   // Date of birth is required for age-restricted purchases (e.g. alcohol).

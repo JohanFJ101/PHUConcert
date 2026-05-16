@@ -81,6 +81,16 @@ a {
   background: var(--primary-dark);
 }
 
+.secondary-link {
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.secondary-link:hover {
+  text-decoration: underline;
+}
+
 button:hover {
   background: var(--primary-dark);
 }
@@ -180,6 +190,42 @@ label {
 .message.error {
   background: #fef3f2;
   color: var(--danger);
+}
+
+.error-card {
+  width: min(520px, 100%);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--danger);
+  border-radius: 12px;
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+.error-card h1,
+.error-card p {
+  margin: 0;
+}
+
+.error-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  align-items: center;
+  background: #fef3f2;
+  border-radius: 999px;
+  color: var(--danger);
+  display: inline-flex;
+  font-size: 1.5rem;
+  font-weight: 800;
+  justify-content: center;
+}
+
+.error-list {
+  color: var(--danger);
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 /* ---- Component classes ----------------------------------------------- */
@@ -351,6 +397,21 @@ label {
 }
 
 .role-button:hover {
+  background: var(--role-accent-dark, var(--primary-dark));
+}
+
+.role-button-link {
+  background: var(--role-accent, var(--primary));
+  border-radius: 8px;
+  color: #ffffff;
+  display: block;
+  font-weight: 700;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+.role-button-link:hover {
   background: var(--role-accent-dark, var(--primary-dark));
 }
 

@@ -16,7 +16,7 @@
  */
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Wristband = {
@@ -30,6 +30,7 @@ type Attendee = {
   id: string;
   email: string;
   name: string;
+  ticketId: string | null;
   dob: string | null;
   gender: string | null;
   phone: string | null;
@@ -79,11 +80,44 @@ type Overview = {
   transactions: Transaction[];
 };
 
+type ImportResponse = {
+  success?: boolean;
+  message?: string;
+  errors?: string[];
+  imported?: number;
+  attendeesCreated?: number;
+  attendeesUpdated?: number;
+  wristbandsCreated?: number;
+  wristbandsUpdated?: number;
+};
+
+type AddAttendeeResponse = {
+  success?: boolean;
+  message?: string;
+  attendee?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+};
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [importMessageType, setImportMessageType] = useState<"success" | "error">("success");
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [manualFullName, setManualFullName] = useState("");
+  const [manualDob, setManualDob] = useState("");
+  const [manualEmail, setManualEmail] = useState("");
+  const [manualTicketId, setManualTicketId] = useState("");
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualMessage, setManualMessage] = useState<string | null>(null);
+  const [manualMessageType, setManualMessageType] = useState<"success" | "error">("success");
 
   /**
    * One-shot fetch that fills every section of the page. Wrapped in
@@ -120,6 +154,106 @@ export default function AdminDashboardPage() {
       method: "POST"
     });
     router.push("/login");
+  }
+
+  async function importAttendees(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+
+    if (!importFile) {
+      setImportMessageType("error");
+      setImportMessage("Choose a CSV file first.");
+      setImportErrors([]);
+      return;
+    }
+
+    setImportLoading(true);
+    setImportMessage(null);
+    setImportErrors([]);
+
+    const formData = new FormData();
+    formData.append("file", importFile);
+
+    try {
+      const response = await fetch("/api/admin/attendees/import", {
+        method: "POST",
+        body: formData
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        router.push("/login/admin");
+        return;
+      }
+
+      const data = (await response.json()) as ImportResponse;
+      if (!response.ok || !data.success) {
+        setImportMessageType("error");
+        setImportMessage(data.message ?? "Attendee import failed.");
+        setImportErrors(data.errors ?? []);
+        return;
+      }
+
+      setImportMessageType("success");
+      setImportMessage(
+        `Imported ${data.imported ?? 0} attendees: ${data.attendeesCreated ?? 0} created, ${
+          data.attendeesUpdated ?? 0
+        } updated.`
+      );
+      setImportFile(null);
+      form.reset();
+      await loadOverview();
+    } catch {
+      setImportMessageType("error");
+      setImportMessage("Network error. Could not import attendees.");
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  async function addManualAttendee(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setManualLoading(true);
+    setManualMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/attendees", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          fullName: manualFullName,
+          dob: manualDob,
+          email: manualEmail,
+          ticketId: manualTicketId
+        })
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        router.push("/login/admin");
+        return;
+      }
+
+      const data = (await response.json()) as AddAttendeeResponse;
+      if (!response.ok || !data.success) {
+        setManualMessageType("error");
+        setManualMessage(data.message ?? "Could not add attendee.");
+        return;
+      }
+
+      setManualMessageType("success");
+      setManualMessage(`Added ${data.attendee?.name ?? "attendee"} with code ${manualTicketId}.`);
+      setManualFullName("");
+      setManualDob("");
+      setManualEmail("");
+      setManualTicketId("");
+      await loadOverview();
+    } catch {
+      setManualMessageType("error");
+      setManualMessage("Network error. Could not add attendee.");
+    } finally {
+      setManualLoading(false);
+    }
   }
 
   return (
@@ -179,12 +313,99 @@ export default function AdminDashboardPage() {
           </section>
 
           <section className="card stack">
+            <h2>Import Attendees</h2>
+            <form className="stack" onSubmit={importAttendees}>
+              <label>
+                BookMyShow CSV
+                <input
+                  accept=".csv,text/csv"
+                  type="file"
+                  onChange={(event) => setImportFile(event.currentTarget.files?.[0] ?? null)}
+                />
+              </label>
+              <div className="row">
+                <button type="submit" disabled={importLoading}>
+                  {importLoading ? "Importing..." : "Import CSV"}
+                </button>
+                <span className="muted">FULL NAME, dob, email, Unique id number</span>
+              </div>
+            </form>
+            {importMessage ? (
+              <div className={`message ${importMessageType}`}>{importMessage}</div>
+            ) : null}
+            {importErrors.length > 0 ? (
+              <ul className="error-list">
+                {importErrors.map((error) => (
+                  <li key={error}>{error}</li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+
+          <section className="card stack">
+            <h2>Add Attendee</h2>
+            <form className="stack" onSubmit={addManualAttendee}>
+              <div className="split">
+                <label>
+                  Full name
+                  <input
+                    value={manualFullName}
+                    onChange={(event) => setManualFullName(event.target.value)}
+                    placeholder="Full name"
+                  />
+                </label>
+                <label>
+                  DOB
+                  <input
+                    type="date"
+                    value={manualDob}
+                    onChange={(event) => setManualDob(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Email used for registering
+                  <input
+                    autoComplete="email"
+                    inputMode="email"
+                    type="email"
+                    value={manualEmail}
+                    onChange={(event) => setManualEmail(event.target.value)}
+                    placeholder="attendee@example.com"
+                  />
+                </label>
+                <label>
+                  Unique id number
+                  <input
+                    autoCapitalize="characters"
+                    value={manualTicketId}
+                    onChange={(event) => setManualTicketId(event.target.value)}
+                    placeholder="BMS-001"
+                  />
+                </label>
+              </div>
+              <div className="row">
+                <button type="submit" disabled={manualLoading}>
+                  {manualLoading ? "Adding..." : "Add attendee"}
+                </button>
+                <span className="muted">Creates an active wristband using the same code.</span>
+              </div>
+            </form>
+            {manualMessage ? (
+              <div className={`message ${manualMessageType}`}>{manualMessage}</div>
+            ) : null}
+          </section>
+
+          <section className="card stack">
             <h2>Attendees</h2>
             {overview.attendees.map((attendee) => (
               <div className="admin-row" key={attendee.id}>
                 <div>
                   <strong>{attendee.name}</strong>
                   <div className="muted">{attendee.email}</div>
+                  <div className="muted">
+                    Ticket {attendee.ticketId ?? "No ticket id"} · DOB{" "}
+                    {attendee.dob ? new Date(attendee.dob).toLocaleDateString() : "No DOB"}
+                  </div>
                   <div className="muted">
                     {attendee.phone ?? "No phone"} · {attendee.gender ?? "No gender"}
                   </div>

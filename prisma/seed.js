@@ -9,7 +9,7 @@
  * What gets created:
  *   * One demo attendee (`demo@example.com`) born 2000-01-01 (over 21 so
  *     they can buy alcohol in the manual test plan).
- *   * One demo wristband `wb_demo_001` with 500 credits.
+ *   * One demo wristband `BMS-DEMO-001` with 500 credits.
  *   * A FOOD shop with three menu items and an ALCOHOL shop with two
  *     age-restricted items.
  *   * Three operator accounts (`food_staff`, `bar_staff`, `admin`) all
@@ -42,6 +42,7 @@ async function main() {
     data: {
       email: "demo@example.com",
       name: "Demo User",
+      ticketId: "BMS-DEMO-001",
       dob: new Date("2000-01-01T00:00:00.000Z"),
       gender: "Not specified",
       phone: "1234567890"
@@ -52,7 +53,7 @@ async function main() {
   // typeable so staff can enter it by hand during testing.
   await prisma.wristband.create({
     data: {
-      qrToken: "wb_demo_001",
+      qrToken: "BMS-DEMO-001",
       userId: demoUser.id,
       balanceCredits: 500,
       status: "ACTIVE"

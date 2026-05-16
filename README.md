@@ -8,6 +8,8 @@ Fullstack MVP for a festival wristband payment flow. One phone can run the atten
 - Prisma with PostgreSQL
 - Simple signed httpOnly cookie sessions for local MVP auth
 - Separate attendee, staff, and admin login pages
+- Google OAuth attendee login matched against pre-imported ticket emails
+- Admin CSV import for BookMyShow-style attendee rows
 - Staff and admin login with hashed passwords
 - Attendee wallet polling every 2 seconds
 - Mock top-up credits with preset amounts or a custom typed amount
@@ -49,13 +51,29 @@ npm run prisma:migrate
 npm run prisma:seed
 ```
 
-6. Start the dev server for two-phone testing:
+6. Configure Google OAuth for attendee login:
+
+Create a Google OAuth web client and add this redirect URI:
+
+```text
+http://localhost:3000/api/auth/google/callback
+```
+
+Then set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and
+`APP_BASE_URL="http://localhost:3000"` in `.env`. For LAN testing from phones,
+also add the laptop-IP callback URL in Google and set `APP_BASE_URL` plus
+`GOOGLE_OAUTH_REDIRECT_URI` to that laptop-IP URL.
+
+Do not use `0.0.0.0` as a browser URL or Google callback URL. It is only the
+server bind address used in the `npm run dev` command.
+
+7. Start the dev server for two-phone testing:
 
 ```bash
 npm run dev -- --hostname 0.0.0.0 -p 3000
 ```
 
-7. Find your laptop IP address, then open this URL from both phones:
+8. Find your laptop IP address, then open this URL from both phones:
 
 ```text
 http://LAPTOP_IP:3000/login
@@ -72,7 +90,8 @@ ipconfig
 Attendee:
 
 - Go to `/login/attendee` or choose Attendee from `/login`.
-- Use the mock attendee login button.
+- Use Google OAuth with an email imported by the admin CSV.
+- For fallback/local testing, use "Login with code" and enter the attendee Unique id number.
 
 Staff:
 
@@ -88,23 +107,37 @@ Admin:
 
 Demo wristband token:
 
-- `wb_demo_001`
+- `BMS-DEMO-001`
+
+## Admin attendee CSV import
+
+Login as admin and open `/admin/dashboard`. The import form accepts a CSV with
+these columns:
+
+```csv
+FULL NAME,dob,email used for registering,Unique id number
+Demo User,2000-01-01,demo@example.com,BMS-DEMO-001
+```
+
+The importer validates the whole file, upserts attendees by email, stores the
+unique id as `ticketId`, and creates an active wristband whose QR token is the
+same unique id for the current MVP.
 
 ## Manual test checklist
 
 1. Open `/login` on phone 1.
-2. Choose Attendee, then click mock attendee login.
-3. Confirm dashboard shows `wb_demo_001` and `500` credits.
+2. Choose Attendee, then sign in with Google using an imported email or use Login with code.
+3. Confirm dashboard shows `BMS-DEMO-001` and `500` credits.
 4. Open `/login` on phone 2.
 5. Choose Staff, then login as `food_staff` / `password123`.
 6. Select Burger.
-7. Enter `wb_demo_001`.
+7. Enter `BMS-DEMO-001`.
 8. Click Charge.
 9. Confirm staff sees success.
 10. Confirm attendee phone balance updates within 2 seconds.
 11. Login as `bar_staff`.
 12. Select Beer.
-13. Enter `wb_demo_001`.
+13. Enter `BMS-DEMO-001`.
 14. Confirm charge succeeds for demo user because DOB is `2000-01-01`.
 15. Change demo DOB to under 21 and confirm alcohol charge fails.
 16. Try invalid QR token and confirm clean error.
@@ -124,8 +157,7 @@ npm run prisma:seed
 
 ## MVP limitations
 
-- No real Google OAuth yet.
 - No real camera QR scanning yet.
 - No real payment gateway yet.
-- No third-party ticketing integration yet.
+- Ticketing integration is CSV import only; there is no live BookMyShow API sync yet.
 - Staff and attendee devices never communicate directly; the database-backed API is the source of truth.
