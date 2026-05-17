@@ -30,100 +30,158 @@ enum Role {
   ADMIN
 }
 
+enum PurchaseIntentStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  EXPIRED
+}
+
 // Festival attendee. Created either by the admin ticketing CSV import or
 // by the demo seed. Google OAuth only links to rows that already exist here
 // so random Google accounts cannot self-register into the event.
 model User {
-  id         String      @id @default(cuid())
+  id                      String           @id @default(cuid())
   // Google OAuth subject, captured on first successful attendee OAuth login.
   // Unique-but-nullable so imported attendees do not need to authenticate
   // until they arrive.
-  googleSub  String?     @unique
+  googleSub               String?          @unique
   // Unique id number from BookMyShow/ticketing import. For the current MVP
   // this is also used as the initial wristband QR token.
-  ticketId   String?     @unique
-  email      String      @unique
-  name       String
+  ticketId                String?          @unique
+  email                   String           @unique
+  name                    String
   // Date of birth is required for age-restricted purchases (e.g. alcohol).
   // Nullable so demo accounts and partially onboarded users still work.
-  dob        DateTime?
-  gender     String?
-  phone      String?
-  role       Role        @default(ATTENDEE)
-  wristbands Wristband[]
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  dob                     DateTime?
+  gender                  String?
+  phone                   String?
+  role                    Role             @default(ATTENDEE)
+  wristbands              Wristband[]
+  approvedPurchaseIntents PurchaseIntent[] @relation("PurchaseIntentApprover")
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
 }
 
 // Operator account (staff or admin). Lives in its own table because it has
 // password-based auth and shop assignment, whereas `User` is OAuth-shaped.
 model Staff {
-  id           String        @id @default(cuid())
+  id              String           @id @default(cuid())
   username     String        @unique
   // bcrypt hash; never returned to the client.
-  passwordHash String
-  role         Role          @default(STAFF)
+  passwordHash    String
+  role            Role             @default(STAFF)
   // STAFF accounts must have a shop; ADMIN accounts have no shop. The FK
   // is nullable so admins can exist, and the staff-charge route enforces
   // that STAFF rows actually have a `shopId` at runtime.
-  shopId       String?
-  shop         Shop?         @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  transactions Transaction[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  shopId          String?
+  shop            Shop?            @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  transactions    Transaction[]
+  purchaseIntents PurchaseIntent[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 // A counter that sells items (e.g. "Food Counter", "Bar Counter"). One
 // shop has many staff members and many menu items.
 model Shop {
-  id           String        @id @default(cuid())
-  name         String
+  id              String           @id @default(cuid())
+  name            String
   // Free-form category, but seed data uses values like "FOOD" and
   // "ALCOHOL" which the UI surfaces on the admin dashboard.
-  category     String
-  staffMembers Staff[]
-  items        Item[]
-  transactions Transaction[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  category        String
+  staffMembers    Staff[]
+  items           Item[]
+  transactions    Transaction[]
+  purchaseIntents PurchaseIntent[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 // A single menu item attached to a shop.
 model Item {
-  id             String        @id @default(cuid())
-  shopId         String
+  id                  String               @id @default(cuid())
+  shopId              String
   // Items belong to a shop; when a shop is deleted, its items go with it.
-  shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name           String
-  priceCredits   Int
-  category       String
+  shop                Shop                 @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name                String
+  priceCredits        Int
+  category            String
   // When true, the staff charge route checks that the attendee is 21+.
-  ageRestricted  Boolean       @default(false)
+  ageRestricted       Boolean              @default(false)
   // Soft-disable an item without deleting it; the shop endpoint filters
   // these out so they never appear on the staff menu.
-  active         Boolean       @default(true)
-  transactions   Transaction[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  active              Boolean              @default(true)
+  transactions        Transaction[]
+  purchaseIntentLines PurchaseIntentLine[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 // Physical wristband linked to an attendee. Holds the spendable credit
 // balance and is identified by `qrToken` (the value staff scan/type in).
 model Wristband {
-  id             String        @id @default(cuid())
+  id                      String           @id @default(cuid())
   // The user-visible identifier. Indexed for fast lookup on charge.
-  qrToken        String        @unique
-  userId         String
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  qrToken                 String           @unique
+  userId                  String
+  user                    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Always non-negative; charges check `balanceCredits >= priceCredits`
   // inside a serializable transaction to prevent double-spend.
-  balanceCredits Int           @default(0)
+  balanceCredits          Int              @default(0)
   // Free-form status string; "ACTIVE" is the only value the app issues
   // today. Anything else is treated as inactive by the charge route.
-  status         String        @default("ACTIVE")
-  transactions   Transaction[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  status                  String           @default("ACTIVE")
+  transactions            Transaction[]
+  approvedPurchaseIntents PurchaseIntent[]
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+}
+
+// Pending basket created by staff. It becomes a real debit only when an
+// attendee reviews the URL encoded in the QR code and approves it.
+model PurchaseIntent {
+  id               String               @id @default(cuid())
+  token            String               @unique
+  status           PurchaseIntentStatus @default(PENDING)
+  staffId          String?
+  staff            Staff?               @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  shopId           String?
+  shop             Shop?                @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  approvedByUserId String?
+  approvedByUser   User?                @relation("PurchaseIntentApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  wristbandId      String?
+  wristband        Wristband?           @relation(fields: [wristbandId], references: [id], onDelete: SetNull)
+  totalCredits     Int
+  expiresAt        DateTime
+  approvedAt       DateTime?
+  declinedAt       DateTime?
+  lines            PurchaseIntentLine[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([staffId, createdAt])
+  @@index([approvedByUserId, createdAt])
+}
+
+// Snapshotted menu line for a pending basket. Name and price are copied at
+// QR generation time so attendees approve the exact amount that will be
+// charged even if the menu changes later.
+model PurchaseIntentLine {
+  id               String         @id @default(cuid())
+  purchaseIntentId String
+  purchaseIntent   PurchaseIntent @relation(fields: [purchaseIntentId], references: [id], onDelete: Cascade)
+  itemId           String?
+  item             Item?          @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  itemName         String
+  unitPriceCredits Int
+  quantity         Int
+  lineTotalCredits Int
+  ageRestricted    Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+
+  @@index([purchaseIntentId])
 }
 
 // Ledger of every credit movement. Positive amounts are top-ups; negative

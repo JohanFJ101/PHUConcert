@@ -7,6 +7,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import {
+  clearAttendeeLoginNextCookie,
+  getAttendeeLoginNextFromRequest
+} from "@/lib/attendee-login-next";
+import {
   GOOGLE_OAUTH_STATE_COOKIE,
   attendeeLoginRedirect,
   clearGoogleOAuthStateCookie,
@@ -31,6 +35,7 @@ type GoogleUserInfoResponse = {
 function loginRedirectWithClearedState(request: NextRequest, errorCode: string) {
   const response = attendeeLoginRedirect(request, errorCode);
   clearGoogleOAuthStateCookie(response);
+  clearAttendeeLoginNextCookie(response);
   return response;
 }
 
@@ -201,9 +206,10 @@ export async function GET(request: NextRequest) {
     });
 
     const response = NextResponse.redirect(
-      new URL("/attendee/dashboard", getBrowserBaseUrl(request))
+      new URL(getAttendeeLoginNextFromRequest(request), getBrowserBaseUrl(request))
     );
     clearGoogleOAuthStateCookie(response);
+    clearAttendeeLoginNextCookie(response);
     setSessionCookie(response, {
       role: "ATTENDEE",
       userId: user.id

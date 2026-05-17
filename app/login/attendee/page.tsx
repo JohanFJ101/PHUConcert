@@ -11,11 +11,30 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+function sanitizeNextPath(value: string | null) {
+  if (
+    !value ||
+    !value.startsWith("/attendee/") ||
+    value.startsWith("//") ||
+    value.includes("\\") ||
+    /[\r\n]/.test(value)
+  ) {
+    return "/attendee/dashboard";
+  }
+
+  return value;
+}
+
 export default function AttendeeLoginPage() {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [code, setCode] = useState("");
+  const [nextPath, setNextPath] = useState("/attendee/dashboard");
+  const oauthHref =
+    nextPath === "/attendee/dashboard"
+      ? "/api/auth/google/start"
+      : `/api/auth/google/start?next=${encodeURIComponent(nextPath)}`;
 
   async function loginWithCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -29,17 +48,22 @@ export default function AttendeeLoginPage() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          code
+          code,
+          next: nextPath
         })
       });
-      const data = (await response.json()) as { success?: boolean; message?: string };
+      const data = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        redirectTo?: string;
+      };
 
       if (!response.ok || !data.success) {
         setMessage(data.message ?? "Could not log in with that code.");
         return;
       }
 
-      router.push("/attendee/dashboard");
+      window.location.assign(sanitizeNextPath(data.redirectTo ?? nextPath));
     } catch {
       setMessage("Network error. Please try again.");
     } finally {
@@ -48,11 +72,17 @@ export default function AttendeeLoginPage() {
   }
 
   useEffect(() => {
-    const errorCode = new URLSearchParams(window.location.search).get("error");
+    const params = new URLSearchParams(window.location.search);
+    const next = sanitizeNextPath(params.get("next"));
+    setNextPath(next);
+
+    const errorCode = params.get("error");
     if (!errorCode) {
       return;
     }
-    router.replace(`/login/attendee/error?reason=${encodeURIComponent(errorCode)}`);
+    const nextQuery =
+      next === "/attendee/dashboard" ? "" : `&next=${encodeURIComponent(next)}`;
+    router.replace(`/login/attendee/error?reason=${encodeURIComponent(errorCode)}${nextQuery}`);
   }, [router]);
 
   return (
@@ -72,7 +102,7 @@ export default function AttendeeLoginPage() {
           <div className="role-hint">
             Admins must import the ticketing CSV before attendee OAuth can succeed.
           </div>
-          <a className="role-button-link" href="/api/auth/google/start">
+          <a className="role-button-link" href={oauthHref}>
             Continue with Google
           </a>
         </section>

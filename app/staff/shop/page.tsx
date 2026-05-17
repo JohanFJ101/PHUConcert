@@ -1,21 +1,15 @@
 /**
- * `/staff/shop` - Charge a wristband for a menu item.
+ * `/staff/shop` - Staff checkout builder.
  *
- * The staff workflow is intentionally tiny:
- *   1. The shop loads from `/api/staff/shop` and renders the active menu.
- *   2. The operator taps a menu item to "select" it.
- *   3. They type (or scan into) the wristband token and tap "Charge".
- *   4. The server runs every validation in a serializable transaction
- *      and returns either a friendly success message or an error.
- *
- * No state is persisted on this page between charges other than the
- * currently selected menu item; the token field clears on success so the
- * next attendee can be scanned cleanly.
+ * Staff no longer scan attendee wristbands. They build a basket from their
+ * shop menu, generate a QR code, and wait for the attendee to scan the URL
+ * and approve the purchase on their own phone.
  */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
 
 type Item = {
   id: string;
@@ -32,25 +26,79 @@ type Shop = {
   items: Item[];
 };
 
+type IntentStatus = "PENDING" | "APPROVED" | "DECLINED" | "EXPIRED";
+
+type PurchaseIntentLine = {
+  id: string;
+  itemName: string;
+  unitPriceCredits: number;
+  quantity: number;
+  lineTotalCredits: number;
+  ageRestricted: boolean;
+};
+
+type PurchaseIntent = {
+  token: string;
+  status: IntentStatus;
+  totalCredits: number;
+  expiresAt: string;
+  approvedAt?: string | null;
+  declinedAt?: string | null;
+  approvalPath: string;
+  approvalUrl: string;
+  approvedByName?: string | null;
+  approvedByEmail?: string | null;
+  wristbandToken?: string | null;
+  lines: PurchaseIntentLine[];
+};
+
+type QuantityMap = Record<string, number>;
+
+function formatStatus(status: IntentStatus) {
+  if (status === "APPROVED") {
+    return "Approved";
+  }
+  if (status === "DECLINED") {
+    return "Declined";
+  }
+  if (status === "EXPIRED") {
+    return "Expired";
+  }
+  return "Waiting for attendee";
+}
+
 export default function StaffShopPage() {
   const router = useRouter();
   const [shop, setShop] = useState<Shop | null>(null);
-  const [selectedItemId, setSelectedItemId] = useState("");
-  const [qrToken, setQrToken] = useState("");
+  const [quantities, setQuantities] = useState<QuantityMap>({});
+  const [currentIntent, setCurrentIntent] = useState<PurchaseIntent | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState(true);
-  const [charging, setCharging] = useState(false);
+  const [creating, setCreating] = useState(false);
 
-  // Resolve the selected item from the menu so the "Selected: ..." line
-  // updates without an extra round-trip.
-  const selectedItem = useMemo(
-    () => shop?.items.find((item) => item.id === selectedItemId) ?? null,
-    [shop, selectedItemId]
+  const cartLines = useMemo(() => {
+    if (!shop) {
+      return [];
+    }
+
+    return shop.items
+      .map((item) => {
+        const quantity = quantities[item.id] ?? 0;
+        return {
+          item,
+          quantity,
+          lineTotalCredits: item.priceCredits * quantity
+        };
+      })
+      .filter((line) => line.quantity > 0);
+  }, [shop, quantities]);
+
+  const cartTotal = useMemo(
+    () => cartLines.reduce((sum, line) => sum + line.lineTotalCredits, 0),
+    [cartLines]
   );
 
-  // Load the shop assigned to this staff session. We intentionally only
-  // do this once on mount; the menu does not change during a shift.
   useEffect(() => {
     async function loadShop() {
       try {
@@ -68,9 +116,6 @@ export default function StaffShopPage() {
         }
 
         setShop(data.shop);
-        // Pre-select the first item so a quick scan-and-tap flow works
-        // without explicitly choosing something.
-        setSelectedItemId(data.shop.items[0]?.id ?? "");
       } catch {
         setMessageType("error");
         setMessage("Network error. Could not load shop.");
@@ -82,55 +127,115 @@ export default function StaffShopPage() {
     void loadShop();
   }, [router]);
 
-  /**
-   * Submit the charge to the server. Every error path (network, auth,
-   * insufficient balance, underage, etc.) just sets a red banner; the
-   * server is the source of truth for what counts as a valid charge.
-   */
-  async function charge() {
-    if (!selectedItemId) {
-      setMessageType("error");
-      setMessage("Select an item");
+  useEffect(() => {
+    if (!currentIntent || currentIntent.status !== "PENDING") {
       return;
     }
 
-    setCharging(true);
+    async function pollStatus() {
+      try {
+        const response = await fetch(`/api/staff/purchase-intents/${currentIntent?.token}`, {
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) {
+          router.push("/login");
+          return;
+        }
+
+        const data = (await response.json()) as {
+          purchaseIntent?: Omit<PurchaseIntent, "approvalPath" | "approvalUrl">;
+          message?: string;
+        };
+        if (!response.ok || !data.purchaseIntent) {
+          setMessageType("error");
+          setMessage(data.message ?? "Could not refresh QR status.");
+          return;
+        }
+
+        setCurrentIntent((existingIntent) =>
+          existingIntent
+            ? {
+                ...existingIntent,
+                ...data.purchaseIntent
+              }
+            : null
+        );
+      } catch {
+        setMessageType("error");
+        setMessage("Network error. Could not refresh QR status.");
+      }
+    }
+
+    const interval = window.setInterval(() => {
+      void pollStatus();
+    }, 2000);
+
+    return () => window.clearInterval(interval);
+  }, [currentIntent, router]);
+
+  function setItemQuantity(itemId: string, quantity: number) {
+    setCurrentIntent(null);
+    setQuantities((current) => {
+      const next = { ...current };
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        delete next[itemId];
+      } else {
+        next[itemId] = quantity;
+      }
+      return next;
+    });
+  }
+
+  async function createPurchaseIntent() {
+    if (cartLines.length === 0) {
+      setMessageType("error");
+      setMessage("Add at least one item to the basket.");
+      return;
+    }
+
+    setCreating(true);
     setMessage(null);
 
     try {
-      const response = await fetch("/api/staff/charge", {
+      const response = await fetch("/api/staff/purchase-intents", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          qrToken,
-          itemId: selectedItemId
+          lines: cartLines.map((line) => ({
+            itemId: line.item.id,
+            quantity: line.quantity
+          }))
         })
       });
       const data = (await response.json()) as {
         success?: boolean;
         message?: string;
-        newBalance?: number;
+        purchaseIntent?: PurchaseIntent;
       };
 
-      if (!response.ok || !data.success) {
+      if (!response.ok || !data.success || !data.purchaseIntent) {
         setMessageType("error");
-        setMessage(data.message ?? "Charge failed");
+        setMessage(data.message ?? "Could not generate purchase QR.");
         return;
       }
 
+      setCurrentIntent(data.purchaseIntent);
       setMessageType("success");
-      setMessage(data.message ?? "Charge succeeded");
-      // Clear the token so the next attendee can be charged without
-      // accidentally re-billing the previous one.
-      setQrToken("");
+      setMessage("Purchase QR ready for attendee approval.");
     } catch {
       setMessageType("error");
       setMessage("Network error. Please try again.");
     } finally {
-      setCharging(false);
+      setCreating(false);
     }
+  }
+
+  function clearBasket() {
+    setQuantities({});
+    setCurrentIntent(null);
+    setMessage(null);
   }
 
   async function logout() {
@@ -160,45 +265,143 @@ export default function StaffShopPage() {
         <div className="card stack">
           <h2>Menu</h2>
           {shop?.items.length === 0 ? <p className="muted">No active menu items.</p> : null}
-          {shop?.items.map((item) => (
-            <button
-              className={`item-button ${item.id === selectedItemId ? "selected" : ""}`}
-              key={item.id}
-              type="button"
-              onClick={() => setSelectedItemId(item.id)}
-            >
-              <strong>{item.name}</strong>
-              <br />
-              <span>
-                {item.priceCredits} credits
-                {item.ageRestricted ? " · 21+" : ""}
-              </span>
-            </button>
-          ))}
+          {shop?.items.map((item) => {
+            const quantity = quantities[item.id] ?? 0;
+            return (
+              <div className="menu-line" key={item.id}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <div className="muted">
+                    {item.priceCredits} credits
+                    {item.ageRestricted ? " · 21+" : ""}
+                  </div>
+                </div>
+                <div className="quantity-control" aria-label={`${item.name} quantity`}>
+                  <button
+                    className="secondary-button icon-button"
+                    type="button"
+                    onClick={() => setItemQuantity(item.id, quantity - 1)}
+                    disabled={quantity === 0}
+                    aria-label={`Remove ${item.name}`}
+                  >
+                    -
+                  </button>
+                  <input
+                    aria-label={`${item.name} quantity`}
+                    inputMode="numeric"
+                    min="0"
+                    step="1"
+                    type="number"
+                    value={quantity || ""}
+                    onChange={(event) => setItemQuantity(item.id, Number(event.target.value))}
+                    placeholder="0"
+                  />
+                  <button
+                    className="secondary-button icon-button"
+                    type="button"
+                    onClick={() => setItemQuantity(item.id, quantity + 1)}
+                    aria-label={`Add ${item.name}`}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div className="card stack">
-          <h2>Charge</h2>
-          {selectedItem ? (
-            <p>
-              Selected: <strong>{selectedItem.name}</strong> ({selectedItem.priceCredits} credits)
-            </p>
-          ) : (
-            <p className="muted">Select an item to charge.</p>
-          )}
-          <label>
-            Wristband QR token
-            <input
-              value={qrToken}
-              onChange={(event) => setQrToken(event.target.value)}
-              placeholder="wb_demo_001"
-            />
-          </label>
-          <button type="button" onClick={() => void charge()} disabled={charging || !selectedItemId}>
-            {charging ? "Charging..." : "Charge"}
+          <div className="header-actions">
+            <h2>Basket</h2>
+            <button className="secondary-button" type="button" onClick={clearBasket}>
+              Clear
+            </button>
+          </div>
+          {cartLines.length === 0 ? <p className="muted">Add items from the menu.</p> : null}
+          {cartLines.map((line) => (
+            <div className="purchase-line" key={line.item.id}>
+              <span>
+                {line.quantity} x {line.item.name}
+              </span>
+              <strong>{line.lineTotalCredits}</strong>
+            </div>
+          ))}
+          <div className="purchase-total">
+            <span>Total</span>
+            <strong>{cartTotal} credits</strong>
+          </div>
+          <button
+            type="button"
+            onClick={() => void createPurchaseIntent()}
+            disabled={creating || cartLines.length === 0 || currentIntent?.status === "PENDING"}
+          >
+            {creating ? "Generating..." : "Generate approval QR"}
           </button>
         </div>
       </section>
+
+      {currentIntent ? (
+        <section className="card stack">
+          <div className="header-actions">
+            <div>
+              <h2>Attendee Approval</h2>
+              <p className="muted">
+                {formatStatus(currentIntent.status)} · expires{" "}
+                {new Date(currentIntent.expiresAt).toLocaleTimeString()}
+              </p>
+            </div>
+            <strong>{currentIntent.totalCredits} credits</strong>
+          </div>
+
+          <div
+            className={`message ${
+              currentIntent.status === "DECLINED" || currentIntent.status === "EXPIRED"
+                ? "error"
+                : "success"
+            }`}
+          >
+            {currentIntent.status === "PENDING"
+              ? "Ask the attendee to scan this QR with their phone camera."
+              : currentIntent.status === "APPROVED"
+                ? `Approved${
+                    currentIntent.approvedByName ? ` by ${currentIntent.approvedByName}` : ""
+                  }.`
+                : formatStatus(currentIntent.status)}
+          </div>
+
+          {currentIntent.status === "PENDING" ? (
+            <div className="qr-layout">
+              <div className="qr-box" aria-label="Purchase approval QR code">
+                <QRCodeSVG value={currentIntent.approvalUrl} size={220} />
+              </div>
+              <div className="stack">
+                <div>
+                  <div className="muted">Approval URL</div>
+                  <a href={currentIntent.approvalUrl}>{currentIntent.approvalUrl}</a>
+                </div>
+                <div>
+                  <div className="muted">Basket</div>
+                  {currentIntent.lines.map((line) => (
+                    <div className="purchase-line" key={line.id}>
+                      <span>
+                        {line.quantity} x {line.itemName}
+                        {line.ageRestricted ? " · 21+" : ""}
+                      </span>
+                      <strong>{line.lineTotalCredits}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {currentIntent.status !== "PENDING" ? (
+            <button className="secondary-button" type="button" onClick={clearBasket}>
+              Start next basket
+            </button>
+          ) : null}
+        </section>
+      ) : null}
     </main>
   );
 }

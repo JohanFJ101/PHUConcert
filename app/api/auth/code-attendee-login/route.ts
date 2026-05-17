@@ -8,6 +8,10 @@
  */
 
 import { NextResponse } from "next/server";
+import {
+  clearAttendeeLoginNextCookie,
+  sanitizeAttendeeNextPath
+} from "@/lib/attendee-login-next";
 import { jsonError, readJsonObject } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { setSessionCookie } from "@/lib/session";
@@ -15,6 +19,7 @@ import { setSessionCookie } from "@/lib/session";
 export async function POST(request: Request) {
   const body = await readJsonObject(request);
   const code = typeof body?.code === "string" ? body.code.trim() : "";
+  const nextPath = sanitizeAttendeeNextPath(body?.next);
 
   if (!code) {
     return jsonError("Code is required.", 400);
@@ -52,11 +57,12 @@ export async function POST(request: Request) {
       return jsonError("No attendee found for that code.", 401);
     }
 
-    const response = NextResponse.json({ success: true });
+    const response = NextResponse.json({ success: true, redirectTo: nextPath });
     setSessionCookie(response, {
       role: "ATTENDEE",
       userId: attendee.id
     });
+    clearAttendeeLoginNextCookie(response);
     return response;
   } catch {
     return jsonError("Code login failed. Check database setup.", 500);

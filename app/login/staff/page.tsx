@@ -9,10 +9,8 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 export default function StaffLoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -41,7 +39,7 @@ export default function StaffLoginPage() {
         return;
       }
 
-      router.push("/staff/shop");
+      window.location.assign("/staff/shop");
     } catch {
       setMessage("Network error. Please try again.");
     } finally {

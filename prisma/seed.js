@@ -16,8 +16,9 @@
  *     sharing the password `password123`. Hashing happens with bcrypt at
  *     cost 10 so the seed runs quickly.
  *
- * Order of deletion matters: child tables (transaction, item, wristband)
- * are emptied before their parents to avoid foreign-key violations.
+ * Order of deletion matters: child tables (transaction, purchase intent
+ * lines, item, wristband) are emptied before their parents to avoid
+ * foreign-key violations.
  */
 
 const { PrismaClient } = require("@prisma/client");
@@ -27,8 +28,11 @@ const prisma = new PrismaClient();
 
 async function main() {
   // Wipe in dependency order: transactions reference everything else,
-  // items/staff/wristbands reference shops/users, so they go first.
+  // purchase intent lines reference purchase intents/items, and
+  // items/staff/wristbands reference shops/users, so children go first.
   await prisma.transaction.deleteMany();
+  await prisma.purchaseIntentLine.deleteMany();
+  await prisma.purchaseIntent.deleteMany();
   await prisma.item.deleteMany();
   await prisma.staff.deleteMany();
   await prisma.wristband.deleteMany();

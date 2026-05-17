@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "dev:tunnel": "node scripts/dev-with-tunnel.mjs",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000",
+    "tunnel:env": "node scripts/set-tunnel-env.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
@@ -15,7 +18,9 @@
   "dependencies": {
     "@prisma/client": "5.22.0",
     "bcryptjs": "2.4.3",
+    "cloudflared": "^0.7.1",
     "next": "^16.2.6",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

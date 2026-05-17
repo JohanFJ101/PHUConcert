@@ -9,10 +9,8 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -41,7 +39,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      router.push("/admin/dashboard");
+      window.location.assign("/admin/dashboard");
     } catch {
       setMessage("Network error. Please try again.");
     } finally {

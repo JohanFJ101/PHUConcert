@@ -13,7 +13,7 @@ Fullstack MVP for a festival wristband payment flow. One phone can run the atten
 - Staff and admin login with hashed passwords
 - Attendee wallet polling every 2 seconds
 - Mock top-up credits with preset amounts or a custom typed amount
-- Staff shop charging by manual wristband token
+- Staff shop basket checkout with attendee QR approval
 - Admin/operator dashboard for attendees, staff, and transactions
 - Transaction history saved in the database
 
@@ -51,39 +51,52 @@ npm run prisma:migrate
 npm run prisma:seed
 ```
 
-6. Configure Google OAuth for attendee login:
+6. Configure Google OAuth for attendee login.
 
-Create a Google OAuth web client and add this redirect URI:
+For same-machine localhost testing, create a Google OAuth web client and add
+this redirect URI:
 
 ```text
 http://localhost:3000/api/auth/google/callback
 ```
 
 Then set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and
-`APP_BASE_URL="http://localhost:3000"` in `.env`. For LAN testing from phones,
-also add the laptop-IP callback URL in Google and set `APP_BASE_URL` plus
-`GOOGLE_OAUTH_REDIRECT_URI` to that laptop-IP URL.
+`APP_BASE_URL="http://localhost:3000"` in `.env`.
 
 Do not use `0.0.0.0` as a browser URL or Google callback URL. It is only the
 server bind address used in the `npm run dev` command.
 
-7. Start the dev server for two-phone testing:
+7. Start the dev server:
 
 ```bash
 npm run dev -- --hostname 0.0.0.0 -p 3000
 ```
 
-8. Find your laptop IP address, then open this URL from both phones:
-
-```text
-http://LAPTOP_IP:3000/login
-```
-
-On Windows, you can usually find the IP address with:
+8. For phone testing with Google OAuth, start a temporary HTTPS Cloudflare
+tunnel in a second terminal:
 
 ```bash
-ipconfig
+npm run tunnel
 ```
+
+Cloudflare prints a random URL like `https://example.trycloudflare.com`.
+Use that URL to update `.env`:
+
+```bash
+npm run tunnel:env -- https://example.trycloudflare.com
+```
+
+The helper prints the exact Google callback URI. Add that exact URI to the
+Google OAuth web client, then restart the Next.js server so it reloads `.env`.
+Open the Cloudflare HTTPS URL from both phones, for example:
+
+```text
+https://example.trycloudflare.com/login
+```
+
+The random `trycloudflare.com` URL changes each time you restart the tunnel, so
+repeat the `tunnel:env` step and update the Google callback URI whenever the
+tunnel URL changes.
 
 ## Demo credentials
 
@@ -125,23 +138,23 @@ same unique id for the current MVP.
 
 ## Manual test checklist
 
-1. Open `/login` on phone 1.
-2. Choose Attendee, then sign in with Google using an imported email or use Login with code.
-3. Confirm dashboard shows `BMS-DEMO-001` and `500` credits.
-4. Open `/login` on phone 2.
-5. Choose Staff, then login as `food_staff` / `password123`.
-6. Select Burger.
-7. Enter `BMS-DEMO-001`.
-8. Click Charge.
-9. Confirm staff sees success.
-10. Confirm attendee phone balance updates within 2 seconds.
-11. Login as `bar_staff`.
-12. Select Beer.
-13. Enter `BMS-DEMO-001`.
-14. Confirm charge succeeds for demo user because DOB is `2000-01-01`.
-15. Change demo DOB to under 21 and confirm alcohol charge fails.
-16. Try invalid QR token and confirm clean error.
-17. Try charging more than balance and confirm insufficient balance error.
+1. Open `/login` on phone 1 using the same origin that is in `APP_BASE_URL`.
+2. Choose Staff, then login as `food_staff` / `password123`.
+3. Add Burger and Fries to the basket.
+4. Click Generate approval QR.
+5. Open the QR URL on phone 2 while logged out, or scan the QR with the phone camera.
+6. Login as the attendee using Google or Login with code `BMS-DEMO-001`.
+7. Confirm the attendee returns to the purchase review page.
+8. Confirm the review shows Burger, Fries, quantities, line totals, total credits, current balance, and balance after approval.
+9. Approve the purchase.
+10. Confirm the staff phone changes from waiting to approved.
+11. Open `/attendee/dashboard` and confirm the balance and transaction history update.
+12. Login as `bar_staff` and generate a Beer approval QR.
+13. Confirm approval succeeds for the demo user because DOB is `2000-01-01`.
+14. Change demo DOB to under 21 and confirm alcohol approval fails.
+15. Try a basket that costs more than the attendee balance and confirm approval is blocked.
+16. Let a QR sit for more than 5 minutes and confirm it expires.
+17. POST to `/api/staff/charge` and confirm it returns `410 Gone`.
 18. Choose Admin, then login as `admin` / `password123`.
 19. Confirm the admin dashboard shows attendees, staff/admins, and recent transactions.
 
@@ -150,6 +163,8 @@ same unique id for the current MVP.
 ```bash
 npm run lint
 npm run build
+npm run tunnel
+npm run tunnel:env -- https://example.trycloudflare.com
 npm run prisma:generate
 npm run prisma:migrate
 npm run prisma:seed
@@ -157,7 +172,7 @@ npm run prisma:seed
 
 ## MVP limitations
 
-- No real camera QR scanning yet.
+- No in-app camera scanner yet; QR approval uses the phone camera/browser opening the encoded URL.
 - No real payment gateway yet.
 - Ticketing integration is CSV import only; there is no live BookMyShow API sync yet.
 - Staff and attendee devices never communicate directly; the database-backed API is the source of truth.

@@ -9,6 +9,10 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
+  sanitizeAttendeeNextPath,
+  setAttendeeLoginNextCookie
+} from "@/lib/attendee-login-next";
+import {
   attendeeLoginRedirect,
   getGoogleOAuthConfig,
   setGoogleOAuthStateCookie
@@ -31,5 +35,9 @@ export async function GET(request: NextRequest) {
 
   const response = NextResponse.redirect(authorizationUrl);
   setGoogleOAuthStateCookie(response, state);
+  setAttendeeLoginNextCookie(
+    response,
+    sanitizeAttendeeNextPath(request.nextUrl.searchParams.get("next"))
+  );
   return response;
 }
