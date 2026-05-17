@@ -37,8 +37,6 @@ copy .env.example .env
 docker compose up -d
 ```
 
-Docker was not detected in the current development environment when this app was scaffolded. If Docker is unavailable, install Docker Desktop or update `DATABASE_URL` in `.env` to point at any PostgreSQL database.
-
 4. Run the Prisma migration:
 
 ```bash
