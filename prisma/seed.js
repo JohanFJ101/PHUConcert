@@ -1,68 +1,68 @@
 /**
  * Demo data seed for PHUConcert.
  *
- * Triggered by `npm run prisma:seed`, which Prisma wires up through the
- * `prisma.seed` field in package.json. The script is intentionally
- * destructive: it wipes every operational table and reinserts a known set
- * of fixtures so that local development always starts from the same state.
+ * Triggered by `npm run prisma:seed`. The script is intentionally
+ * destructive: it wipes every operational table and reinserts a known
+ * set of fixtures so local development always starts from the same state.
  *
  * What gets created:
- *   * One demo attendee (`demo@example.com`) born 2000-01-01 (over 21 so
- *     they can buy alcohol in the manual test plan).
- *   * One demo wristband `BMS-DEMO-001` with 500 credits.
- *   * A FOOD shop with three menu items and an ALCOHOL shop with two
- *     age-restricted items.
  *   * Three operator accounts (`food_staff`, `bar_staff`, `admin`) all
- *     sharing the password `password123`. Hashing happens with bcrypt at
- *     cost 10 so the seed runs quickly.
+ *     sharing the password `password123`.
+ *   * Two shops (Food Counter and Bar Counter) with their menus.
+ *   * Ten fully-registered mock attendees with name/DOB/email/phone, each
+ *     linked to one active wristband with a random initial balance. Use
+ *     these tokens (look at the seed output) to test the scanner login
+ *     flow end-to-end without having to register first.
  *
- * Order of deletion matters: child tables (transaction, purchase intent
- * lines, item, wristband) are emptied before their parents to avoid
- * foreign-key violations.
+ * To test the first-scan registration flow, generate blank wristbands
+ * from the admin dashboard instead.
  */
 
+const { randomInt } = require("crypto");
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
 
 const prisma = new PrismaClient();
 
+// Deterministic-ish mock attendees so the seed reads the same way each
+// time and so the staff/admin UI has interesting data to display.
+const MOCK_ATTENDEES = [
+  { name: "Aarav Sharma", dob: "1995-04-12", email: "aarav.sharma@example.com", phone: "+919812345001" },
+  { name: "Priya Iyer", dob: "1992-09-03", email: "priya.iyer@example.com", phone: "+919812345002" },
+  { name: "Rohan Mehta", dob: "1998-12-21", email: "rohan.mehta@example.com", phone: "+919812345003" },
+  { name: "Ananya Reddy", dob: "2000-07-15", email: "ananya.reddy@example.com", phone: "+919812345004" },
+  { name: "Vikram Kapoor", dob: "1988-01-30", email: "vikram.kapoor@example.com", phone: "+919812345005" },
+  { name: "Sneha Banerjee", dob: "1996-06-08", email: "sneha.banerjee@example.com", phone: "+919812345006" },
+  { name: "Karan Nair", dob: "1990-11-19", email: "karan.nair@example.com", phone: "+919812345007" },
+  { name: "Meera Pillai", dob: "2002-03-25", email: "meera.pillai@example.com", phone: "+919812345008" },
+  { name: "Arjun Desai", dob: "1985-08-14", email: "arjun.desai@example.com", phone: "+919812345009" },
+  { name: "Isha Joshi", dob: "1999-02-27", email: "isha.joshi@example.com", phone: "+919812345010" }
+];
+
+// Stable 8-digit tokens for the seeded attendees. Easy to type into the
+// manual-entry fallback during testing.
+const MOCK_TOKENS = [
+  "10000001",
+  "10000002",
+  "10000003",
+  "10000004",
+  "10000005",
+  "10000006",
+  "10000007",
+  "10000008",
+  "10000009",
+  "10000010"
+];
+
 async function main() {
-  // Wipe in dependency order: transactions reference everything else,
-  // purchase intent lines reference purchase intents/items, and
+  // Wipe in dependency order: transactions reference everything else, and
   // items/staff/wristbands reference shops/users, so children go first.
   await prisma.transaction.deleteMany();
-  await prisma.purchaseIntentLine.deleteMany();
-  await prisma.purchaseIntent.deleteMany();
   await prisma.item.deleteMany();
   await prisma.staff.deleteMany();
   await prisma.wristband.deleteMany();
   await prisma.shop.deleteMany();
   await prisma.user.deleteMany();
-
-  // Demo attendee. DOB is fixed in the past so the alcohol flow works
-  // out-of-the-box; the README's manual test plan asks the tester to edit
-  // this DOB to verify the under-21 rejection path.
-  const demoUser = await prisma.user.create({
-    data: {
-      email: "demo@example.com",
-      name: "Demo User",
-      ticketId: "BMS-DEMO-001",
-      dob: new Date("2000-01-01T00:00:00.000Z"),
-      gender: "Not specified",
-      phone: "1234567890"
-    }
-  });
-
-  // Wristband linked to the demo attendee. The QR token is short and
-  // typeable so staff can enter it by hand during testing.
-  await prisma.wristband.create({
-    data: {
-      qrToken: "BMS-DEMO-001",
-      userId: demoUser.id,
-      balanceCredits: 500,
-      status: "ACTIVE"
-    }
-  });
 
   // Food shop with three plain items (no age restriction).
   const foodShop = await prisma.shop.create({
@@ -94,44 +94,59 @@ async function main() {
   });
 
   // Reusing one hashed password for all demo operators keeps the seed
-  // fast and the local credentials memorable. Production must NEVER share
-  // hashes like this; this is a fixture for local testing only.
+  // fast and the local credentials memorable.
   const passwordHash = await bcrypt.hash("password123", 10);
 
   await prisma.staff.createMany({
     data: [
-      {
-        username: "food_staff",
-        passwordHash,
-        role: "STAFF",
-        shopId: foodShop.id
-      },
-      {
-        username: "bar_staff",
-        passwordHash,
-        role: "STAFF",
-        shopId: barShop.id
-      },
-      {
-        // Admins have no shop attached; the schema allows `shopId` to be
-        // null for exactly this case.
-        username: "admin",
-        passwordHash,
-        role: "ADMIN"
-      }
+      { username: "food_staff", passwordHash, role: "STAFF", shopId: foodShop.id },
+      { username: "bar_staff", passwordHash, role: "STAFF", shopId: barShop.id },
+      { username: "admin", passwordHash, role: "ADMIN" }
     ]
   });
 
+  // Ten fully-registered mock attendees: each has a wristband with a
+  // random pretest balance so charging and topping up are immediately
+  // exercisable from the staff and attendee UIs.
+  for (let i = 0; i < MOCK_ATTENDEES.length; i += 1) {
+    const profile = MOCK_ATTENDEES[i];
+    const token = MOCK_TOKENS[i];
+    const balance = randomInt(200, 1500);
+
+    const user = await prisma.user.create({
+      data: {
+        ticketId: token,
+        email: profile.email,
+        name: profile.name,
+        dob: new Date(profile.dob + "T00:00:00.000Z"),
+        phone: profile.phone
+      }
+    });
+
+    await prisma.wristband.create({
+      data: {
+        qrToken: token,
+        userId: user.id,
+        balanceCredits: balance,
+        status: "ACTIVE"
+      }
+    });
+  }
+
   console.log("Seeded PHUConcert demo data.");
+  console.log("Seeded wristband tokens (for manual-entry testing):");
+  for (let i = 0; i < MOCK_ATTENDEES.length; i += 1) {
+    console.log(`  ${MOCK_TOKENS[i]}  -  ${MOCK_ATTENDEES[i].name}`);
+  }
+  console.log("Staff/admin credentials: food_staff / bar_staff / admin, password 'password123'.");
+  console.log("Generate blank wristbands from the admin dashboard to test the first-scan registration flow.");
 }
 
 main()
   .catch((error) => {
     console.error(error);
-    // Exit non-zero so `npm run prisma:seed` fails loudly in CI/scripts.
     process.exit(1);
   })
   .finally(async () => {
-    // Always close the connection so the process exits cleanly.
     await prisma.$disconnect();
   });

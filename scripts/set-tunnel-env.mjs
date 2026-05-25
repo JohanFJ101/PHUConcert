@@ -1,12 +1,17 @@
 #!/usr/bin/env node
+/**
+ * Updates APP_BASE_URL in .env for a Cloudflare HTTPS tunnel.
+ *
+ * Phone-based scanner testing requires an HTTPS origin (the browser
+ * blocks camera access on plain HTTP except for localhost). This script
+ * rewrites APP_BASE_URL so server-generated URLs match what the phone
+ * sees through the tunnel.
+ */
 
 import fs from "node:fs";
 import path from "node:path";
 
-const ENV_KEYS = {
-  appBaseUrl: "APP_BASE_URL",
-  redirectUri: "GOOGLE_OAUTH_REDIRECT_URI"
-};
+const ENV_KEY = "APP_BASE_URL";
 
 function printUsage() {
   console.error(
@@ -16,7 +21,7 @@ function printUsage() {
       "",
       "Options:",
       "  --env-file <path>  Update a different env file instead of .env.",
-      "  --print-only       Print the values without writing a file."
+      "  --print-only       Print the value without writing a file."
     ].join("\n")
   );
 }
@@ -95,26 +100,22 @@ function setEnvValue(content, key, value) {
 
 export function updateTunnelEnvValues({ tunnelUrl, envFile = ".env", printOnly = false }) {
   const appBaseUrl = normalizeTunnelUrl(tunnelUrl);
-  const redirectUri = `${appBaseUrl}/api/auth/google/callback`;
 
   if (printOnly) {
     return {
       appBaseUrl,
-      redirectUri,
       envPath: null
     };
   }
 
   const envPath = path.resolve(process.cwd(), envFile);
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
-  let updated = setEnvValue(existing, ENV_KEYS.appBaseUrl, appBaseUrl);
-  updated = setEnvValue(updated, ENV_KEYS.redirectUri, redirectUri);
+  const updated = setEnvValue(existing, ENV_KEY, appBaseUrl);
 
   fs.writeFileSync(envPath, updated);
 
   return {
     appBaseUrl,
-    redirectUri,
     envPath
   };
 }
@@ -125,19 +126,12 @@ function main() {
     const result = updateTunnelEnvValues(args);
 
     if (args.printOnly) {
-      console.log(`${ENV_KEYS.appBaseUrl}=${quoteEnvValue(result.appBaseUrl)}`);
-      console.log(`${ENV_KEYS.redirectUri}=${quoteEnvValue(result.redirectUri)}`);
-      console.log("");
-      console.log("Add this exact redirect URI to the Google OAuth web client:");
-      console.log(result.redirectUri);
+      console.log(`${ENV_KEY}=${quoteEnvValue(result.appBaseUrl)}`);
       return;
     }
 
     console.log(`Updated ${result.envPath}`);
-    console.log("");
     console.log("Restart the Next.js server so it reloads .env.");
-    console.log("Add this exact redirect URI to the Google OAuth web client:");
-    console.log(result.redirectUri);
   } catch (error) {
     console.error(error.message);
     console.error("");

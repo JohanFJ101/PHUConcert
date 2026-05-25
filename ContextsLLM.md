@@ -356,3 +356,60 @@ Summary:
 - Added `scripts/set-tunnel-env.mjs` and `npm run tunnel:env -- <https-url>` to update `.env` with `APP_BASE_URL` and `GOOGLE_OAUTH_REDIRECT_URI` for the current Cloudflare URL.
 - Changed staff purchase-intent QR generation to use `APP_BASE_URL`, so QR codes encode the public tunnel URL when one is configured.
 - Updated `.env.example` and README with the run order: start Next, start the tunnel, update `.env`, add the exact Google callback URI, restart Next, and open the tunnel URL on phones.
+
+## Cursor
+
+#### 2026-05-25 - QR Scanner Flow + Removed Google OAuth + Direct Staff Charge
+
+Cursor agent reshaped the auth flow around physical wristband QR codes. The big architectural shifts: there is no more Google OAuth, no more attendee-approval purchase QR, and `Wristband.userId` is now nullable so admins can pre-generate blank wristbands and hand them out at the gate.
+
+What changed:
+
+- **Schema and migration (`prisma/schema.prisma`, migration `20260525170000_qr_flow`)**: dropped `PurchaseIntent` / `PurchaseIntentLine` tables and the `PurchaseIntentStatus` enum; dropped `User.googleSub` column; made `Wristband.userId` nullable so a wristband can exist before being scanned and registered.
+- **Seed (`prisma/seed.js`)**: now creates 10 fully-registered mock attendees (`10000001` – `10000010`) each with a random initial balance, plus the existing `food_staff` / `bar_staff` / `admin` operator accounts. No demo user, no pre-seeded blank wristbands (admin generates those from the dashboard).
+- **Login layout (`/login`)**: attendee card is the centered hero; staff and admin are intentionally demoted to small pill links in the top-left and top-right corners. Styles live in `globals.css` under `.login-shell`, `.login-corner`, `.login-center`.
+- **Attendee login (`/login/attendee`)**: replaced the Google OAuth flow with a camera scanner powered by `html5-qrcode`. Flow: tap "Scan wristband" → camera opens → on decode, POST `/api/auth/attendee-scan`. Server returns either `REGISTERED` (session cookie set, redirect to dashboard) or `NEEDS_REGISTRATION` (client renders an inline form for Full name / DOB / Email / Phone, which then POSTs to `/api/auth/attendee-register`). Manual entry fallback uses the same flow. Sessions persist for 7 days (existing `phu_session` cookie).
+- **Staff shop (`/staff/shop`)**: dropped the QR-approval basket flow entirely. Staff now build a basket, tap "Scan wristband to charge", the camera opens, and the wristband is debited directly via `/api/staff/charge`. Manual fallback works the same way. The page shows a "last charge" panel with attendee name, new balance, and lines after each successful debit.
+- **Admin dashboard (`/admin/dashboard`)**: added "Generate Blank Wristbands" (count input → batch create, shows QR grid, "Download as ZIP" exports `<token>.jpg` files using the in-DOM `<QRCodeCanvas>` ref + JSZip on the client). Added phone column to the manual add form and CSV import. Added attendee edit (name/DOB/email/phone) and wristband disable/activate toggles. Added a dedicated "Blank Wristbands" section listing unregistered tokens with the same disable toggle. No delete action by design — soft-disable is the documented path.
+- **New libs**:
+  - `lib/wristband-tokens.ts` — `generateUniqueWristbandToken`, `generateUniqueWristbandTokens(count)`, `extractTokenFromScan` (handles raw token or URL-shaped QR contents).
+  - `lib/validation.ts` — shared `validateFullName / validateDob / validateEmail / validatePhone` used by registration, admin add, admin edit, and CSV import so error messages stay consistent.
+- **New / updated API routes**:
+  - `POST /api/auth/attendee-scan` — resolves a wristband token and either sets a session or signals "needs registration".
+  - `POST /api/auth/attendee-register` — validates the form fields, creates the User, links the wristband, sets the session cookie.
+  - `POST /api/staff/charge` — direct serializable debit. Verifies wristband is ACTIVE and registered, checks age for any age-restricted items, ensures the balance covers the basket, decrements, writes ledger rows.
+  - `POST /api/admin/wristbands/generate` — batch (≤200) blank wristband creation.
+  - `GET /api/admin/wristbands` and `PATCH /api/admin/wristbands/[id]` — list all wristbands and toggle between ACTIVE/INACTIVE.
+  - `PATCH /api/admin/attendees/[id]` — edit name/DOB/email/phone.
+  - `POST /api/admin/attendees` — now requires phone alongside name/DOB/email, generates the wristband via `wristband-tokens.ts`.
+  - `POST /api/admin/attendees/import` — CSV now requires a phone column (header aliases: phone, mobile, mobilenumber, contact, contactnumber).
+  - `GET /api/admin/overview` — extended response includes `blankWristbands` and a count in `totals`; transaction fan-out now tolerates a wristband with no user (treated as "Unknown" for display purposes).
+- **Removed files**:
+  - `app/api/auth/google/` (start + callback)
+  - `app/api/auth/mock-attendee-login/`
+  - `app/api/auth/code-attendee-login/`
+  - `app/api/staff/purchase-intents/` and `app/api/attendee/purchase-intents/`
+  - `app/api/onboarding/` and `app/onboarding/`
+  - `app/attendee/purchase/[token]/`
+  - `app/login/attendee/error/`
+  - `lib/google-oauth.ts`, `lib/attendee-login-next.ts`, `lib/generated-ids.ts`
+- **Dependencies added**: `html5-qrcode` (camera-based QR scanner; works on Chrome, Edge, iOS Safari), `jszip` (client-side ZIP creation for the QR batch download).
+- **`.env.example` and tunnel scripts**: removed all Google OAuth references. `scripts/set-tunnel-env.mjs` now only updates `APP_BASE_URL`. Tunneling is still useful because the in-app QR scanner needs an HTTPS origin for camera access on phones.
+
+### Verification
+
+- `npm run lint` clean.
+- `npm run build` succeeds; 27 routes registered.
+- `npx prisma validate` clean.
+- `npx prisma migrate deploy` applied the new migration cleanly against the local docker Postgres.
+- `npm run prisma:seed` ran successfully and populated the 10 mock attendees.
+- End-to-end smoke test via curl against the dev server confirmed: admin login → batch wristband generation → blank-wristband scan returns `NEEDS_REGISTRATION` → registration creates the user → re-scan returns `REGISTERED` → top-up + staff charge succeeds → unregistered wristband charge attempt is blocked with the registration prompt → unknown token returns "not recognised" → age-restricted item rejected for under-21 attendee → disabled wristband cannot be scanned.
+
+### Gotchas / Notes
+
+- The camera scanner relies on `getUserMedia`, which only works over HTTPS or `localhost`. On phones (LAN HTTP), use `npm run tunnel` + `npm run tunnel:env -- <url>` to get a Cloudflare HTTPS URL.
+- The QR code on a wristband is just the raw 8-digit token. The in-app scanner handles either the raw token or a URL whose last path segment is the token (`extractTokenFromScan`), so future URL-shaped QRs can drop in without touching backend code.
+- The "Download as ZIP" feature on the admin page renders the QR codes on the page first (using `<QRCodeCanvas>`), then reads from the canvases via `toBlob('image/jpeg')`. Don't call download before the canvases mount.
+- `Wristband.userId` is nullable now, so any new code that walks `wristband.user.something` must handle `null` (the admin overview already does for the transaction fan-out).
+- Wristband.gender column is still in the schema but unused by the new flow. Left in place to avoid an extra migration; ignore unless you need it.
+- No DELETE for attendees by request. To "remove" an attendee, disable their wristband from the admin dashboard.

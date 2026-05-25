@@ -1,15 +1,25 @@
 /**
  * `/admin/dashboard` - Operator overview and management console.
  *
- * The dashboard refreshes itself every 5 seconds using `/api/admin/overview`,
- * while still keeping the manual refresh button for immediate checks. Admins
- * can import/create attendees, generate staff credentials, manage staff shop
- * menus, deactivate staff, reset staff passwords, and import staff/menu CSVs.
+ * Refreshes itself every 5 seconds via /api/admin/overview. From this
+ * page admins can:
+ *   - Generate blank wristband QR codes in bulk (and download them as a
+ *     ZIP of JPGs that can be printed and physically attached at the
+ *     gate).
+ *   - Add an attendee manually (name, DOB, email, phone) which creates a
+ *     fully-registered user + active wristband in one step.
+ *   - Bulk-import attendees from a CSV with full name, DOB, email,
+ *     phone, and a unique id number.
+ *   - Edit any attendee's profile.
+ *   - Soft-disable a wristband so it cannot be scanned by attendees or
+ *     charged by staff (re-enable any time).
+ *   - Create and manage staff/shop accounts.
  */
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { QRCodeCanvas } from "qrcode.react";
 
 type Wristband = {
   id: string;
@@ -27,6 +37,14 @@ type Attendee = {
   gender: string | null;
   phone: string | null;
   wristbands: Wristband[];
+};
+
+type BlankWristband = {
+  id: string;
+  qrToken: string;
+  status: string;
+  balanceCredits: number;
+  createdAt: string;
 };
 
 type MenuItem = {
@@ -72,12 +90,14 @@ type Overview = {
     attendees: number;
     staff: number;
     transactions: number;
+    blankWristbands: number;
     totalBalance: number;
     totalSpend: number;
     totalTopups: number;
   };
   attendees: Attendee[];
   staff: StaffMember[];
+  blankWristbands: BlankWristband[];
   transactions: Transaction[];
 };
 
@@ -101,6 +121,12 @@ type AddAttendeeResponse = {
     email: string;
     ticketId: string;
   };
+};
+
+type GenerateWristbandsResponse = {
+  success?: boolean;
+  message?: string;
+  wristbands?: BlankWristband[];
 };
 
 type GeneratedCredential = {
@@ -140,6 +166,13 @@ type StaffDraft = {
   items: DraftMenuItem[];
 };
 
+type AttendeeDraft = {
+  name: string;
+  dob: string;
+  email: string;
+  phone: string;
+};
+
 function createDraftMenuItem(category = ""): DraftMenuItem {
   const clientId =
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -177,6 +210,15 @@ function staffToDraft(staff: StaffMember): StaffDraft {
   };
 }
 
+function attendeeToDraft(attendee: Attendee): AttendeeDraft {
+  return {
+    name: attendee.name,
+    dob: attendee.dob ? attendee.dob.slice(0, 10) : "",
+    email: attendee.email,
+    phone: attendee.phone ?? ""
+  };
+}
+
 function serializeDraftItems(items: DraftMenuItem[]) {
   return items.map((item) => ({
     id: item.id,
@@ -203,17 +245,40 @@ export default function AdminDashboardPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importMessageType, setImportMessageType] = useState<"success" | "error">("success");
   const [importErrors, setImportErrors] = useState<string[]>([]);
+
   const [manualFullName, setManualFullName] = useState("");
   const [manualDob, setManualDob] = useState("");
   const [manualEmail, setManualEmail] = useState("");
+  const [manualPhone, setManualPhone] = useState("");
   const [manualLoading, setManualLoading] = useState(false);
   const [manualMessage, setManualMessage] = useState<string | null>(null);
   const [manualMessageType, setManualMessageType] = useState<"success" | "error">("success");
+
+  const [generateCount, setGenerateCount] = useState("10");
+  const [generateLoading, setGenerateLoading] = useState(false);
+  const [generateMessage, setGenerateMessage] = useState<string | null>(null);
+  const [generateMessageType, setGenerateMessageType] = useState<"success" | "error">("success");
+  const [generatedBatch, setGeneratedBatch] = useState<BlankWristband[]>([]);
+  const [zipDownloading, setZipDownloading] = useState(false);
+  const qrCanvasRefs = useRef(new Map<string, HTMLCanvasElement>());
+
+  const [editingAttendeeId, setEditingAttendeeId] = useState<string | null>(null);
+  const [attendeeDraft, setAttendeeDraft] = useState<AttendeeDraft | null>(null);
+  const [attendeeSaving, setAttendeeSaving] = useState(false);
+  const [attendeeEditMessage, setAttendeeEditMessage] = useState<string | null>(null);
+  const [attendeeEditMessageType, setAttendeeEditMessageType] =
+    useState<"success" | "error">("success");
+
+  const [wristbandToggleId, setWristbandToggleId] = useState<string | null>(null);
+  const [exportingQrs, setExportingQrs] = useState(false);
+
+
   const [newStaffShopName, setNewStaffShopName] = useState("");
   const [newStaffShopCategory, setNewStaffShopCategory] = useState("");
   const [newStaffItems, setNewStaffItems] = useState<DraftMenuItem[]>([]);
@@ -346,7 +411,8 @@ export default function AdminDashboardPage() {
         body: JSON.stringify({
           fullName: manualFullName,
           dob: manualDob,
-          email: manualEmail
+          email: manualEmail,
+          phone: manualPhone
         })
       });
 
@@ -364,19 +430,262 @@ export default function AdminDashboardPage() {
 
       setManualMessageType("success");
       setManualMessage(
-        `Added ${data.attendee?.name ?? "attendee"} with generated code ${
+        `Added ${data.attendee?.name ?? "attendee"} with wristband code ${
           data.attendee?.ticketId ?? "unknown"
         }.`
       );
       setManualFullName("");
       setManualDob("");
       setManualEmail("");
+      setManualPhone("");
       await loadOverview();
     } catch {
       setManualMessageType("error");
       setManualMessage("Network error. Could not add attendee.");
     } finally {
       setManualLoading(false);
+    }
+  }
+
+  async function generateBlankWristbands(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const count = Number(generateCount);
+    if (!Number.isInteger(count) || count <= 0) {
+      setGenerateMessageType("error");
+      setGenerateMessage("Enter a positive whole number.");
+      return;
+    }
+
+    setGenerateLoading(true);
+    setGenerateMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/wristbands/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ count })
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        router.push("/login/admin");
+        return;
+      }
+
+      const data = (await response.json()) as GenerateWristbandsResponse;
+      if (!response.ok || !data.success || !data.wristbands) {
+        setGenerateMessageType("error");
+        setGenerateMessage(data.message ?? "Could not generate wristbands.");
+        return;
+      }
+
+      setGenerateMessageType("success");
+      setGenerateMessage(`Generated ${data.wristbands.length} blank wristbands.`);
+      setGeneratedBatch(data.wristbands);
+      qrCanvasRefs.current = new Map();
+      await loadOverview();
+    } catch {
+      setGenerateMessageType("error");
+      setGenerateMessage("Network error. Could not generate wristbands.");
+    } finally {
+      setGenerateLoading(false);
+    }
+  }
+
+  async function downloadBatchAsZip() {
+    if (generatedBatch.length === 0) {
+      return;
+    }
+
+    setZipDownloading(true);
+    setGenerateMessage(null);
+
+    try {
+      const jsZipModule = await import("jszip");
+      const ZipCtor = jsZipModule.default;
+      const zip = new ZipCtor();
+
+      for (const wristband of generatedBatch) {
+        const canvas = qrCanvasRefs.current.get(wristband.qrToken);
+        if (!canvas) {
+          continue;
+        }
+        const blob: Blob | null = await new Promise((resolve) =>
+          canvas.toBlob((value) => resolve(value), "image/jpeg", 0.92)
+        );
+        if (!blob) {
+          continue;
+        }
+        const arrayBuffer = await blob.arrayBuffer();
+        zip.file(`${wristband.qrToken}.jpg`, arrayBuffer);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      link.download = `phuconcert-wristbands-${timestamp}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      setGenerateMessageType("success");
+      setGenerateMessage(`Downloaded ${generatedBatch.length} QR images as a ZIP.`);
+    } catch {
+      setGenerateMessageType("error");
+      setGenerateMessage("Could not create ZIP. Please try again.");
+    } finally {
+      setZipDownloading(false);
+    }
+  }
+
+  async function downloadAttendeeQrsAsZip() {
+    if (!overview || overview.attendees.length === 0) {
+      return;
+    }
+
+    setExportingQrs(true);
+
+    try {
+      const jsZipModule = await import("jszip");
+      const ZipCtor = jsZipModule.default;
+      const zip = new ZipCtor();
+
+      let addedCount = 0;
+      for (const attendee of overview.attendees) {
+        for (const wristband of attendee.wristbands) {
+          const canvas = qrCanvasRefs.current.get(wristband.qrToken);
+          if (!canvas) {
+            continue;
+          }
+          const blob: Blob | null = await new Promise((resolve) =>
+            canvas.toBlob((value) => resolve(value), "image/jpeg", 0.92)
+          );
+          if (!blob) {
+            continue;
+          }
+          const arrayBuffer = await blob.arrayBuffer();
+          const safeName = attendee.name.replace(/[^a-zA-Z0-9_ -]/g, "");
+          zip.file(`${safeName}-${wristband.qrToken}.jpg`, arrayBuffer);
+          addedCount++;
+        }
+      }
+
+      if (addedCount === 0) {
+        alert("No QR code elements were found to export. Make sure they are visible on the screen.");
+        setExportingQrs(false);
+        return;
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      link.download = `phuconcert-attendee-qrs-${timestamp}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Could not export ZIP. Please try again.");
+    } finally {
+      setExportingQrs(false);
+    }
+  }
+
+  function startEditingAttendee(attendee: Attendee) {
+
+    setEditingAttendeeId(attendee.id);
+    setAttendeeDraft(attendeeToDraft(attendee));
+    setAttendeeEditMessage(null);
+  }
+
+  function updateAttendeeDraft(patch: Partial<AttendeeDraft>) {
+    setAttendeeDraft((current) => (current ? { ...current, ...patch } : current));
+  }
+
+  async function saveAttendeeEdit() {
+    if (!editingAttendeeId || !attendeeDraft) {
+      return;
+    }
+
+    setAttendeeSaving(true);
+    setAttendeeEditMessage(null);
+
+    try {
+      const response = await fetch(`/api/admin/attendees/${editingAttendeeId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          fullName: attendeeDraft.name,
+          dob: attendeeDraft.dob,
+          email: attendeeDraft.email,
+          phone: attendeeDraft.phone
+        })
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        router.push("/login/admin");
+        return;
+      }
+
+      const data = (await response.json()) as { success?: boolean; message?: string };
+      if (!response.ok || !data.success) {
+        setAttendeeEditMessageType("error");
+        setAttendeeEditMessage(data.message ?? "Could not update attendee.");
+        return;
+      }
+
+      setAttendeeEditMessageType("success");
+      setAttendeeEditMessage("Attendee updated.");
+      setEditingAttendeeId(null);
+      setAttendeeDraft(null);
+      await loadOverview();
+    } catch {
+      setAttendeeEditMessageType("error");
+      setAttendeeEditMessage("Network error. Could not update attendee.");
+    } finally {
+      setAttendeeSaving(false);
+    }
+  }
+
+  async function toggleWristbandStatus(wristband: { id: string; status: string }) {
+    setWristbandToggleId(wristband.id);
+
+    const nextStatus = wristband.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+
+    try {
+      const response = await fetch(`/api/admin/wristbands/${wristband.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ status: nextStatus })
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        router.push("/login/admin");
+        return;
+      }
+
+      const data = (await response.json()) as { success?: boolean; message?: string };
+      if (!response.ok || !data.success) {
+        setMessage(data.message ?? "Could not update wristband.");
+        return;
+      }
+
+      await loadOverview();
+    } catch {
+      setMessage("Network error. Could not update wristband.");
+    } finally {
+      setWristbandToggleId(null);
     }
   }
 
@@ -744,7 +1053,8 @@ export default function AdminDashboardPage() {
         <div>
           <h1>Admin Dashboard</h1>
           <p className="muted">
-            Operator access to attendees, staff, and transactions. Auto-refreshes every 5 seconds.
+            Operator access to attendees, staff, wristbands and transactions. Auto-refreshes
+            every 5 seconds.
             {lastUpdated ? ` Last updated ${lastUpdated}.` : ""}
           </p>
         </div>
@@ -773,6 +1083,10 @@ export default function AdminDashboardPage() {
               <strong className="big-number">{overview.totals.staff}</strong>
             </div>
             <div className="card stack">
+              <span className="muted">Blank wristbands</span>
+              <strong className="big-number">{overview.totals.blankWristbands}</strong>
+            </div>
+            <div className="card stack">
               <span className="muted">Transactions</span>
               <strong className="big-number">{overview.totals.transactions}</strong>
             </div>
@@ -794,10 +1108,70 @@ export default function AdminDashboardPage() {
           </section>
 
           <section className="card stack">
+            <h2>Generate Blank Wristbands</h2>
+            <p className="muted">
+              Pre-creates wristband tokens without any attendee attached. Print the QR codes,
+              attach them to physical wristbands, and the first attendee to scan one will be
+              prompted to register.
+            </p>
+            <form className="row" onSubmit={generateBlankWristbands}>
+              <label>
+                Count
+                <input
+                  inputMode="numeric"
+                  min="1"
+                  max="200"
+                  step="1"
+                  type="number"
+                  value={generateCount}
+                  onChange={(event) => setGenerateCount(event.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={generateLoading}>
+                {generateLoading ? "Generating..." : "Generate"}
+              </button>
+              {generatedBatch.length > 0 ? (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void downloadBatchAsZip()}
+                  disabled={zipDownloading}
+                >
+                  {zipDownloading ? "Building ZIP..." : "Download as ZIP"}
+                </button>
+              ) : null}
+            </form>
+            {generateMessage ? (
+              <div className={`message ${generateMessageType}`}>{generateMessage}</div>
+            ) : null}
+            {generatedBatch.length > 0 ? (
+              <div className="qr-grid">
+                {generatedBatch.map((wristband) => (
+                  <div className="qr-grid-item" key={wristband.id}>
+                    <QRCodeCanvas
+                      value={wristband.qrToken}
+                      size={180}
+                      includeMargin
+                      ref={(canvas) => {
+                        if (canvas) {
+                          qrCanvasRefs.current.set(wristband.qrToken, canvas);
+                        } else {
+                          qrCanvasRefs.current.delete(wristband.qrToken);
+                        }
+                      }}
+                    />
+                    <code>{wristband.qrToken}</code>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="card stack">
             <h2>Import Attendees</h2>
             <form className="stack" onSubmit={importAttendees}>
               <label>
-                BookMyShow CSV
+                Attendee CSV
                 <input
                   accept=".csv,text/csv"
                   type="file"
@@ -808,7 +1182,9 @@ export default function AdminDashboardPage() {
                 <button type="submit" disabled={importLoading}>
                   {importLoading ? "Importing..." : "Import CSV"}
                 </button>
-                <span className="muted">FULL NAME, dob, email, Unique id number</span>
+                <span className="muted">
+                  Columns: FULL NAME, dob, email, phone, Unique id number
+                </span>
               </div>
             </form>
             {importMessage ? (
@@ -832,7 +1208,7 @@ export default function AdminDashboardPage() {
                   <input
                     value={manualFullName}
                     onChange={(event) => setManualFullName(event.target.value)}
-                    placeholder="Full name"
+                    placeholder="Jane Doe"
                   />
                 </label>
                 <label>
@@ -844,7 +1220,7 @@ export default function AdminDashboardPage() {
                   />
                 </label>
                 <label>
-                  Email used for registering
+                  Email
                   <input
                     autoComplete="email"
                     inputMode="email"
@@ -854,12 +1230,23 @@ export default function AdminDashboardPage() {
                     placeholder="attendee@example.com"
                   />
                 </label>
+                <label>
+                  Phone
+                  <input
+                    autoComplete="tel"
+                    inputMode="tel"
+                    type="tel"
+                    value={manualPhone}
+                    onChange={(event) => setManualPhone(event.target.value)}
+                    placeholder="+91 98765 43210"
+                  />
+                </label>
               </div>
               <div className="row">
                 <button type="submit" disabled={manualLoading}>
-                  {manualLoading ? "Adding..." : "Generate attendee"}
+                  {manualLoading ? "Adding..." : "Add attendee"}
                 </button>
-                <span className="muted">Creates an 8-digit code and active wristband.</span>
+                <span className="muted">Generates an 8-digit code and active wristband.</span>
               </div>
             </form>
             {manualMessage ? (
@@ -943,7 +1330,10 @@ export default function AdminDashboardPage() {
             {staffCredentials.length > 0 ? (
               <div className="credential-list">
                 {staffCredentials.map((credential) => (
-                  <div className="credential-row" key={`${credential.username}-${credential.password}`}>
+                  <div
+                    className="credential-row"
+                    key={`${credential.username}-${credential.password}`}
+                  >
                     <span>{credential.username}</span>
                     <strong>{credential.password}</strong>
                   </div>
@@ -1064,30 +1454,169 @@ export default function AdminDashboardPage() {
           </section>
 
           <section className="card stack">
-            <h2>Attendees</h2>
-            {overview.attendees.map((attendee) => (
-              <div className="admin-row" key={attendee.id}>
-                <div>
-                  <strong>{attendee.name}</strong>
-                  <div className="muted">{attendee.email}</div>
-                  <div className="muted">
-                    Ticket {attendee.ticketId ?? "No ticket id"} · DOB{" "}
-                    {attendee.dob ? new Date(attendee.dob).toLocaleDateString() : "No DOB"}
-                  </div>
-                  <div className="muted">
-                    {attendee.phone ?? "No phone"} · {attendee.gender ?? "No gender"}
-                  </div>
-                </div>
-                <div>
-                  {attendee.wristbands.map((wristband) => (
-                    <div key={wristband.id}>
-                      <strong>{wristband.qrToken}</strong>
-                      <div className="muted">
-                        {wristband.status} · {wristband.balanceCredits} credits
-                      </div>
+            <div className="split" style={{ alignItems: "center" }}>
+              <h2>Attendees</h2>
+              {overview.attendees.length > 0 ? (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void downloadAttendeeQrsAsZip()}
+                  disabled={exportingQrs}
+                >
+                  {exportingQrs ? "Exporting ZIP..." : "Export Attendee QRs as ZIP"}
+                </button>
+              ) : null}
+            </div>
+            {attendeeEditMessage ? (
+              <div className={`message ${attendeeEditMessageType}`}>{attendeeEditMessage}</div>
+            ) : null}
+
+            {overview.attendees.length === 0 ? (
+              <p className="muted">No registered attendees yet.</p>
+            ) : null}
+            {overview.attendees.map((attendee) => {
+              const isEditing = editingAttendeeId === attendee.id && attendeeDraft;
+              if (isEditing && attendeeDraft) {
+                return (
+                  <div className="attendee-row stack" key={attendee.id}>
+                    <div className="split">
+                      <label>
+                        Full name
+                        <input
+                          value={attendeeDraft.name}
+                          onChange={(event) => updateAttendeeDraft({ name: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        DOB
+                        <input
+                          type="date"
+                          value={attendeeDraft.dob}
+                          onChange={(event) => updateAttendeeDraft({ dob: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        Email
+                        <input
+                          type="email"
+                          value={attendeeDraft.email}
+                          onChange={(event) => updateAttendeeDraft({ email: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        Phone
+                        <input
+                          type="tel"
+                          value={attendeeDraft.phone}
+                          onChange={(event) => updateAttendeeDraft({ phone: event.target.value })}
+                        />
+                      </label>
                     </div>
-                  ))}
+                    <div className="row">
+                      <button
+                        type="button"
+                        disabled={attendeeSaving}
+                        onClick={() => void saveAttendeeEdit()}
+                      >
+                        {attendeeSaving ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setEditingAttendeeId(null);
+                          setAttendeeDraft(null);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="admin-row" key={attendee.id}>
+                  <div>
+                    <strong>{attendee.name}</strong>
+                    <div className="muted">{attendee.email}</div>
+                    <div className="muted">
+                      Ticket {attendee.ticketId ?? "—"} · DOB{" "}
+                      {attendee.dob ? new Date(attendee.dob).toLocaleDateString() : "—"}
+                    </div>
+                    <div className="muted">Phone {attendee.phone ?? "—"}</div>
+                    <button
+                      type="button"
+                      className="secondary-button small-button"
+                      onClick={() => startEditingAttendee(attendee)}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="stack">
+                    {attendee.wristbands.map((wristband) => (
+                      <div key={wristband.id} className="row" style={{ gap: "1rem", alignItems: "center" }}>
+                        <div style={{ background: "white", padding: "4px", borderRadius: "4px", display: "inline-flex" }}>
+                          <QRCodeCanvas
+                            value={wristband.qrToken}
+                            size={64}
+                            includeMargin={false}
+                          />
+                        </div>
+                        <div>
+                          <strong>{wristband.qrToken}</strong>
+                          <div className="muted">
+                            {wristband.status} · {wristband.balanceCredits} credits
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className={
+                            wristband.status === "ACTIVE"
+                              ? "danger-button small-button"
+                              : "secondary-button small-button"
+                          }
+                          disabled={wristbandToggleId === wristband.id}
+                          onClick={() => void toggleWristbandStatus(wristband)}
+                        >
+                          {wristband.status === "ACTIVE" ? "Disable" : "Activate"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
                 </div>
+              );
+            })}
+          </section>
+
+          <section className="card stack">
+            <h2>Blank Wristbands ({overview.blankWristbands.length})</h2>
+            <p className="muted">
+              Wristbands that have been generated but no attendee has scanned them yet.
+            </p>
+            {overview.blankWristbands.length === 0 ? (
+              <p className="muted">No blank wristbands. Generate some above.</p>
+            ) : null}
+            {overview.blankWristbands.map((wristband) => (
+              <div className="row" key={wristband.id}>
+                <div>
+                  <strong>{wristband.qrToken}</strong>
+                  <div className="muted">
+                    {wristband.status} · created {new Date(wristband.createdAt).toLocaleString()}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={
+                    wristband.status === "ACTIVE"
+                      ? "danger-button small-button"
+                      : "secondary-button small-button"
+                  }
+                  disabled={wristbandToggleId === wristband.id}
+                  onClick={() => void toggleWristbandStatus(wristband)}
+                >
+                  {wristband.status === "ACTIVE" ? "Disable" : "Activate"}
+                </button>
               </div>
             ))}
           </section>

@@ -1,15 +1,16 @@
 /**
- * `/staff/shop` - Staff checkout builder.
+ * `/staff/shop` - Staff checkout (scan + charge).
  *
- * Staff no longer scan attendee wristbands. They build a basket from their
- * shop menu, generate a QR code, and wait for the attendee to scan the URL
- * and approve the purchase on their own phone.
+ * Staff build a basket from their shop menu, scan the attendee's
+ * wristband (or type the code manually), confirm, and the wristband is
+ * debited immediately via /api/staff/charge. There is no attendee
+ * approval step in this flow; the attendee verifies the price by
+ * watching the staff phone before scanning.
  */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { QRCodeSVG } from "qrcode.react";
 
 type Item = {
   id: string;
@@ -26,56 +27,38 @@ type Shop = {
   items: Item[];
 };
 
-type IntentStatus = "PENDING" | "APPROVED" | "DECLINED" | "EXPIRED";
-
-type PurchaseIntentLine = {
-  id: string;
+type ChargeLineSummary = {
   itemName: string;
-  unitPriceCredits: number;
   quantity: number;
   lineTotalCredits: number;
-  ageRestricted: boolean;
 };
 
-type PurchaseIntent = {
-  token: string;
-  status: IntentStatus;
+type ChargeResult = {
+  attendeeName: string;
+  wristbandToken: string;
+  newBalance: number;
   totalCredits: number;
-  expiresAt: string;
-  approvedAt?: string | null;
-  declinedAt?: string | null;
-  approvalPath: string;
-  approvalUrl: string;
-  approvedByName?: string | null;
-  approvedByEmail?: string | null;
-  wristbandToken?: string | null;
-  lines: PurchaseIntentLine[];
+  lines: ChargeLineSummary[];
 };
 
 type QuantityMap = Record<string, number>;
 
-function formatStatus(status: IntentStatus) {
-  if (status === "APPROVED") {
-    return "Approved";
-  }
-  if (status === "DECLINED") {
-    return "Declined";
-  }
-  if (status === "EXPIRED") {
-    return "Expired";
-  }
-  return "Waiting for attendee";
-}
+const SCANNER_ELEMENT_ID = "phu-staff-scanner";
 
 export default function StaffShopPage() {
   const router = useRouter();
   const [shop, setShop] = useState<Shop | null>(null);
   const [quantities, setQuantities] = useState<QuantityMap>({});
-  const [currentIntent, setCurrentIntent] = useState<PurchaseIntent | null>(null);
+  const [scanMode, setScanMode] = useState<"closed" | "camera" | "manual">("closed");
+  const [manualToken, setManualToken] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const [charging, setCharging] = useState(false);
+  const [lastCharge, setLastCharge] = useState<ChargeResult | null>(null);
+
+  const scanInFlightRef = useRef(false);
+  const lastDecodedRef = useRef<string>("");
 
   const cartLines = useMemo(() => {
     if (!shop) {
@@ -127,54 +110,143 @@ export default function StaffShopPage() {
     void loadShop();
   }, [router]);
 
-  useEffect(() => {
-    if (!currentIntent || currentIntent.status !== "PENDING") {
-      return;
-    }
+  const submitCharge = useCallback(
+    async (token: string) => {
+      const trimmed = token.trim();
+      if (!trimmed) {
+        setMessageType("error");
+        setMessage("Wristband code is required.");
+        return;
+      }
+      if (cartLines.length === 0) {
+        setMessageType("error");
+        setMessage("Add at least one item to the basket first.");
+        return;
+      }
 
-    async function pollStatus() {
+      setCharging(true);
+      setMessage(null);
+
       try {
-        const response = await fetch(`/api/staff/purchase-intents/${currentIntent?.token}`, {
-          cache: "no-store"
+        const response = await fetch("/api/staff/charge", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            token: trimmed,
+            lines: cartLines.map((line) => ({
+              itemId: line.item.id,
+              quantity: line.quantity
+            }))
+          })
         });
+
         if (response.status === 401 || response.status === 403) {
           router.push("/login");
           return;
         }
 
         const data = (await response.json()) as {
-          purchaseIntent?: Omit<PurchaseIntent, "approvalPath" | "approvalUrl">;
+          success?: boolean;
           message?: string;
+          charge?: ChargeResult;
         };
-        if (!response.ok || !data.purchaseIntent) {
+
+        if (!response.ok || !data.success || !data.charge) {
           setMessageType("error");
-          setMessage(data.message ?? "Could not refresh QR status.");
+          setMessage(data.message ?? "Charge failed.");
           return;
         }
 
-        setCurrentIntent((existingIntent) =>
-          existingIntent
-            ? {
-                ...existingIntent,
-                ...data.purchaseIntent
-              }
-            : null
-        );
+        setMessageType("success");
+        setMessage(data.message ?? "Charge complete.");
+        setLastCharge(data.charge);
+        setQuantities({});
+        setScanMode("closed");
+        setManualToken("");
       } catch {
         setMessageType("error");
-        setMessage("Network error. Could not refresh QR status.");
+        setMessage("Network error. Please try again.");
+      } finally {
+        setCharging(false);
       }
+    },
+    [cartLines, router]
+  );
+
+  // Camera scanner lifecycle. html5-qrcode is loaded lazily so SSR is
+  // never asked to evaluate the camera library.
+  useEffect(() => {
+    if (scanMode !== "camera") {
+      return;
     }
 
-    const interval = window.setInterval(() => {
-      void pollStatus();
-    }, 2000);
+    let cancelled = false;
+    let scanner: { stop: () => Promise<void>; clear: () => void } | null = null;
 
-    return () => window.clearInterval(interval);
-  }, [currentIntent, router]);
+    (async () => {
+      try {
+        const qrModule = await import("html5-qrcode");
+        if (cancelled) {
+          return;
+        }
+        const instance = new qrModule.Html5Qrcode(SCANNER_ELEMENT_ID);
+        scanner = instance;
+
+        await instance.start(
+          { facingMode: "environment" },
+          { fps: 12, qrbox: { width: 240, height: 240 } },
+          async (decodedText: string) => {
+            if (scanInFlightRef.current) {
+              return;
+            }
+            if (lastDecodedRef.current === decodedText) {
+              return;
+            }
+            lastDecodedRef.current = decodedText;
+            scanInFlightRef.current = true;
+
+            try {
+              await instance.stop();
+              instance.clear();
+            } catch {
+              /* already stopped */
+            }
+            scanner = null;
+            await submitCharge(decodedText);
+            scanInFlightRef.current = false;
+          },
+          () => {
+            /* ignore frame errors */
+          }
+        );
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        const detail = error instanceof Error ? error.message : "Camera unavailable.";
+        setMessageType("error");
+        setMessage(`Could not open camera (${detail}). Use manual entry instead.`);
+        setScanMode("manual");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (scanner) {
+        scanner
+          .stop()
+          .then(() => scanner?.clear())
+          .catch(() => {});
+      }
+      scanInFlightRef.current = false;
+    };
+  }, [scanMode, submitCharge]);
 
   function setItemQuantity(itemId: string, quantity: number) {
-    setCurrentIntent(null);
+    setLastCharge(null);
+    setMessage(null);
     setQuantities((current) => {
       const next = { ...current };
       if (!Number.isInteger(quantity) || quantity <= 0) {
@@ -186,55 +258,11 @@ export default function StaffShopPage() {
     });
   }
 
-  async function createPurchaseIntent() {
-    if (cartLines.length === 0) {
-      setMessageType("error");
-      setMessage("Add at least one item to the basket.");
-      return;
-    }
-
-    setCreating(true);
-    setMessage(null);
-
-    try {
-      const response = await fetch("/api/staff/purchase-intents", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          lines: cartLines.map((line) => ({
-            itemId: line.item.id,
-            quantity: line.quantity
-          }))
-        })
-      });
-      const data = (await response.json()) as {
-        success?: boolean;
-        message?: string;
-        purchaseIntent?: PurchaseIntent;
-      };
-
-      if (!response.ok || !data.success || !data.purchaseIntent) {
-        setMessageType("error");
-        setMessage(data.message ?? "Could not generate purchase QR.");
-        return;
-      }
-
-      setCurrentIntent(data.purchaseIntent);
-      setMessageType("success");
-      setMessage("Purchase QR ready for attendee approval.");
-    } catch {
-      setMessageType("error");
-      setMessage("Network error. Please try again.");
-    } finally {
-      setCreating(false);
-    }
-  }
-
   function clearBasket() {
     setQuantities({});
-    setCurrentIntent(null);
+    setScanMode("closed");
+    setManualToken("");
+    setLastCharge(null);
     setMessage(null);
   }
 
@@ -330,76 +358,99 @@ export default function StaffShopPage() {
             <span>Total</span>
             <strong>{cartTotal} credits</strong>
           </div>
+
           <button
             type="button"
-            onClick={() => void createPurchaseIntent()}
-            disabled={creating || cartLines.length === 0 || currentIntent?.status === "PENDING"}
+            disabled={charging || cartLines.length === 0 || scanMode !== "closed"}
+            onClick={() => {
+              setMessage(null);
+              lastDecodedRef.current = "";
+              setScanMode("camera");
+            }}
           >
-            {creating ? "Generating..." : "Generate approval QR"}
+            {charging ? "Charging..." : "Scan wristband to charge"}
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={charging || cartLines.length === 0 || scanMode !== "closed"}
+            onClick={() => {
+              setMessage(null);
+              setManualToken("");
+              setScanMode("manual");
+            }}
+          >
+            Enter code manually
           </button>
         </div>
       </section>
 
-      {currentIntent ? (
+      {scanMode === "camera" ? (
         <section className="card stack">
           <div className="header-actions">
-            <div>
-              <h2>Attendee Approval</h2>
-              <p className="muted">
-                {formatStatus(currentIntent.status)} · expires{" "}
-                {new Date(currentIntent.expiresAt).toLocaleTimeString()}
-              </p>
-            </div>
-            <strong>{currentIntent.totalCredits} credits</strong>
-          </div>
-
-          <div
-            className={`message ${
-              currentIntent.status === "DECLINED" || currentIntent.status === "EXPIRED"
-                ? "error"
-                : "success"
-            }`}
-          >
-            {currentIntent.status === "PENDING"
-              ? "Ask the attendee to scan this QR with their phone camera."
-              : currentIntent.status === "APPROVED"
-                ? `Approved${
-                    currentIntent.approvedByName ? ` by ${currentIntent.approvedByName}` : ""
-                  }.`
-                : formatStatus(currentIntent.status)}
-          </div>
-
-          {currentIntent.status === "PENDING" ? (
-            <div className="qr-layout">
-              <div className="qr-box" aria-label="Purchase approval QR code">
-                <QRCodeSVG value={currentIntent.approvalUrl} size={220} />
-              </div>
-              <div className="stack">
-                <div>
-                  <div className="muted">Approval URL</div>
-                  <a href={currentIntent.approvalUrl}>{currentIntent.approvalUrl}</a>
-                </div>
-                <div>
-                  <div className="muted">Basket</div>
-                  {currentIntent.lines.map((line) => (
-                    <div className="purchase-line" key={line.id}>
-                      <span>
-                        {line.quantity} x {line.itemName}
-                        {line.ageRestricted ? " · 21+" : ""}
-                      </span>
-                      <strong>{line.lineTotalCredits}</strong>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {currentIntent.status !== "PENDING" ? (
-            <button className="secondary-button" type="button" onClick={clearBasket}>
-              Start next basket
+            <h2>Scanning wristband</h2>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setScanMode("closed")}
+            >
+              Cancel
             </button>
-          ) : null}
+          </div>
+          <p className="muted">Hold the wristband 15 cm from the camera.</p>
+          <div id={SCANNER_ELEMENT_ID} className="scanner-viewport" />
+        </section>
+      ) : null}
+
+      {scanMode === "manual" ? (
+        <section className="card stack">
+          <div className="header-actions">
+            <h2>Enter wristband code</h2>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setScanMode("closed")}
+            >
+              Cancel
+            </button>
+          </div>
+          <label>
+            Wristband code
+            <input
+              autoFocus
+              inputMode="numeric"
+              value={manualToken}
+              onChange={(event) => setManualToken(event.target.value)}
+              placeholder="e.g. 10000001"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={charging}
+            onClick={() => void submitCharge(manualToken)}
+          >
+            {charging ? "Charging..." : `Charge ${cartTotal} credits`}
+          </button>
+        </section>
+      ) : null}
+
+      {lastCharge ? (
+        <section className="card stack">
+          <h2>Last charge</h2>
+          <p>
+            Charged <strong>{lastCharge.totalCredits} credits</strong> to{" "}
+            <strong>{lastCharge.attendeeName}</strong> (wristband{" "}
+            <strong>{lastCharge.wristbandToken}</strong>). New balance:{" "}
+            <strong>{lastCharge.newBalance}</strong>.
+          </p>
+          {lastCharge.lines.map((line) => (
+            <div className="purchase-line" key={`${line.itemName}-${line.quantity}`}>
+              <span>
+                {line.quantity} x {line.itemName}
+              </span>
+              <strong>{line.lineTotalCredits}</strong>
+            </div>
+          ))}
         </section>
       ) : null}
     </main>

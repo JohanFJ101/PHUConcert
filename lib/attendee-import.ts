@@ -1,14 +1,16 @@
 import { normalizeAttendeeEmail } from "@/lib/email";
+import { validatePhone } from "@/lib/validation";
 
 export type AttendeeImportRow = {
   rowNumber: number;
   fullName: string;
   dob: Date;
   email: string;
+  phone: string;
   ticketId: string;
 };
 
-type FieldName = "fullName" | "dob" | "email" | "ticketId";
+type FieldName = "fullName" | "dob" | "email" | "phone" | "ticketId";
 
 const HEADER_ALIASES: Record<FieldName, Set<string>> = {
   fullName: new Set(["fullname", "name", "attendeename", "customername"]),
@@ -20,6 +22,14 @@ const HEADER_ALIASES: Record<FieldName, Set<string>> = {
     "registrationemail",
     "emailusedforregistering",
     "emailusedforregistration"
+  ]),
+  phone: new Set([
+    "phone",
+    "phonenumber",
+    "mobile",
+    "mobilenumber",
+    "contact",
+    "contactnumber"
   ]),
   ticketId: new Set([
     "uniqueid",
@@ -171,6 +181,7 @@ export function parseAttendeeCsv(csvText: string) {
     fullName: findColumn(headers, "fullName"),
     dob: findColumn(headers, "dob"),
     email: findColumn(headers, "email"),
+    phone: findColumn(headers, "phone"),
     ticketId: findColumn(headers, "ticketId")
   };
   const missingColumns = (Object.entries(columnIndexes) as [FieldName, number][])
@@ -198,8 +209,10 @@ export function parseAttendeeCsv(csvText: string) {
     const fullName = row[columnIndexes.fullName]?.trim() ?? "";
     const dobValue = row[columnIndexes.dob]?.trim() ?? "";
     const email = normalizeAttendeeEmail(row[columnIndexes.email] ?? "");
+    const phoneRaw = row[columnIndexes.phone]?.trim() ?? "";
     const ticketId = row[columnIndexes.ticketId]?.trim() ?? "";
     const dob = parseAttendeeDob(dobValue);
+    const phoneCheck = validatePhone(phoneRaw);
 
     if (!fullName) {
       rowErrors.push(`Row ${rowNumber}: FULL NAME is required.`);
@@ -209,6 +222,9 @@ export function parseAttendeeCsv(csvText: string) {
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       rowErrors.push(`Row ${rowNumber}: email is invalid.`);
+    }
+    if (!phoneCheck.ok) {
+      rowErrors.push(`Row ${rowNumber}: phone must be 10-15 digits.`);
     }
     if (!ticketId) {
       rowErrors.push(`Row ${rowNumber}: Unique id number is required.`);
@@ -234,12 +250,21 @@ export function parseAttendeeCsv(csvText: string) {
       seenTicketIds.set(ticketId, rowNumber);
     }
 
-    if (fullName && dob && email && ticketId && !duplicateEmailRow && !duplicateTicketRow) {
+    if (
+      fullName &&
+      dob &&
+      email &&
+      phoneCheck.ok &&
+      ticketId &&
+      !duplicateEmailRow &&
+      !duplicateTicketRow
+    ) {
       attendeeRows.push({
         rowNumber,
         fullName,
         dob,
         email,
+        phone: phoneCheck.value,
         ticketId
       });
     }

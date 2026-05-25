@@ -32,23 +32,20 @@ function startNext(url) {
     return;
   }
 
-  const redirectUri = `${url}/api/auth/google/callback`;
   const nextEnv = {
     ...process.env,
-    APP_BASE_URL: url,
-    GOOGLE_OAUTH_REDIRECT_URI: redirectUri
+    APP_BASE_URL: url
   };
 
   console.log("");
   console.log(`Cloudflare URL: ${url}`);
-  console.log(`Google callback URI: ${redirectUri}`);
-  console.log("Add that exact callback URI in Google Cloud Console if it is not already there.");
+  console.log("Use this URL on phones to test the QR scanner over HTTPS.");
   console.log("");
 
   nextProcess = spawn(command("next"), ["dev", "--hostname", HOSTNAME, "-p", PORT], {
     env: nextEnv,
     stdio: ["inherit", "pipe", "pipe"],
-    shell: false
+    shell: true
   });
 
   nextProcess.stdout.on("data", (chunk) => prefixLines("[next]", chunk));
@@ -101,7 +98,7 @@ console.log("Next.js will start after Cloudflare prints the public HTTPS URL.");
 
 tunnelProcess = spawn(command("cloudflared"), ["tunnel", "--url", LOCAL_TARGET], {
   stdio: ["inherit", "pipe", "pipe"],
-  shell: false
+  shell: true
 });
 
 tunnelProcess.stdout.on("data", handleTunnelOutput);

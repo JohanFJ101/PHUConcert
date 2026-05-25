@@ -1,18 +1,23 @@
 /**
  * POST /api/admin/attendees
  *
- * Admin-only manual attendee creation. Admins enter full name, DOB, and
- * email; the server generates the 8-digit unique ID used for both
- * `User.ticketId` and the attendee's active wristband token.
+ * Admin-only manual attendee creation. Admins enter full name, DOB,
+ * email, and phone; the server generates a unique 8-digit token used as
+ * both `User.ticketId` and the new wristband's `qrToken`.
  */
 
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { parseAttendeeDob } from "@/lib/attendee-import";
 import { isGmailAddress, normalizeAttendeeEmail, normalizeEmailAddress } from "@/lib/email";
-import { generateUniqueAttendeeTicketId } from "@/lib/generated-ids";
 import { jsonError, readJsonObject, requireAdminSession } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import {
+  validateDob,
+  validateEmail,
+  validateFullName,
+  validatePhone
+} from "@/lib/validation";
+import { generateUniqueWristbandToken } from "@/lib/wristband-tokens";
 
 async function findUserByNormalizedEmail(email: string) {
   const rawEmail = normalizeEmailAddress(email);
@@ -64,38 +69,41 @@ export async function POST(request: Request) {
   }
 
   const body = await readJsonObject(request);
-  const fullName = typeof body?.fullName === "string" ? body.fullName.trim() : "";
-  const email = typeof body?.email === "string" ? normalizeAttendeeEmail(body.email) : "";
-  const dobValue = typeof body?.dob === "string" ? body.dob.trim() : "";
-  const dob = parseAttendeeDob(dobValue);
-
-  if (!fullName) {
-    return jsonError("Full name is required.", 400);
+  const nameCheck = validateFullName(typeof body?.fullName === "string" ? body.fullName : "");
+  if (!nameCheck.ok) {
+    return jsonError(nameCheck.message, 400);
   }
-  if (!dob) {
-    return jsonError("DOB must be YYYY-MM-DD or DD/MM/YYYY.", 400);
+  const dobCheck = validateDob(typeof body?.dob === "string" ? body.dob : "");
+  if (!dobCheck.ok) {
+    return jsonError(dobCheck.message, 400);
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return jsonError("Email is invalid.", 400);
+  const emailCheck = validateEmail(typeof body?.email === "string" ? body.email : "");
+  if (!emailCheck.ok) {
+    return jsonError(emailCheck.message, 400);
+  }
+  const phoneCheck = validatePhone(typeof body?.phone === "string" ? body.phone : "");
+  if (!phoneCheck.ok) {
+    return jsonError(phoneCheck.message, 400);
   }
 
   try {
-    const existingEmailUser = await findUserByNormalizedEmail(email);
+    const existingEmailUser = await findUserByNormalizedEmail(emailCheck.value);
 
     if (existingEmailUser) {
       return jsonError(`Email already belongs to ${existingEmailUser.email}.`, 409);
     }
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const ticketId = await generateUniqueAttendeeTicketId();
+      const ticketId = await generateUniqueWristbandToken();
 
       try {
         const attendee = await prisma.$transaction(async (tx) => {
           const user = await tx.user.create({
             data: {
-              email,
-              name: fullName,
-              dob,
+              email: emailCheck.value,
+              name: nameCheck.value,
+              dob: dobCheck.value,
+              phone: phoneCheck.value,
               ticketId
             },
             select: {

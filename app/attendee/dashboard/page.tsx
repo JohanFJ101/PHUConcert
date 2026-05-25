@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { QRCodeCanvas } from "qrcode.react";
 
 type Wristband = {
   id: string;
@@ -190,47 +191,86 @@ export default function AttendeeDashboardPage() {
 
       {message ? <div className={`message ${messageType}`}>{message}</div> : null}
 
-      <section className="split">
-        <div className="card stack">
-          <h2>Wristband</h2>
-          {loading ? <p className="muted">Loading...</p> : null}
-          {activeWristband ? (
-            <>
-              <div>
-                <div className="muted">Token</div>
-                <strong>{activeWristband.qrToken}</strong>
-              </div>
-              <div>
-                <div className="muted">Status</div>
-                <strong>{activeWristband.status}</strong>
-              </div>
-              <div>
-                <div className="muted">Balance</div>
-                <div className="big-number">{activeWristband.balanceCredits}</div>
-                <div className="muted">credits</div>
-              </div>
-            </>
-          ) : (
-            <p className="muted">No wristband linked.</p>
-          )}
+      {/* ── Wristband Pass ── */}
+      {loading ? (
+        <div className="card" style={{ textAlign: "center", padding: "2rem" }}>
+          <p className="muted">Loading wristband...</p>
         </div>
+      ) : activeWristband ? (
+        <section style={{
+          background: activeWristband.status === "ACTIVE"
+            ? "linear-gradient(135deg, #059669 0%, #10b981 100%)"
+            : "linear-gradient(135deg, #475569 0%, #64748b 100%)",
+          color: "#fff",
+          borderRadius: "16px",
+          padding: "1.5rem",
+          boxShadow: "0 6px 24px rgba(0,0,0,0.10)",
+          position: "relative",
+          overflow: "hidden"
+        }}>
+          {/* decorative circles */}
+          <div style={{ position: "absolute", top: "-30px", right: "-30px", width: "140px", height: "140px", borderRadius: "50%", background: "rgba(255,255,255,0.07)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", bottom: "-50px", left: "-30px", width: "120px", height: "120px", borderRadius: "50%", background: "rgba(255,255,255,0.05)", pointerEvents: "none" }} />
 
-        <div className="card stack">
-          <h2>Top-up</h2>
-          <div className="row">
-            {TOPUP_PRESETS.map((amount) => (
-              <button
-                className="secondary-button"
-                key={amount}
-                type="button"
-                onClick={() => setTopupAmount(String(amount))}
-                disabled={topupLoading}
-              >
-                {amount}
-              </button>
-            ))}
+          {/* top bar */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+            <span style={{ fontSize: "0.8rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", opacity: 0.85 }}>PHUConcert Pass</span>
+            <span style={{
+              fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase",
+              background: activeWristband.status === "ACTIVE" ? "rgba(255,255,255,0.2)" : "rgba(239,68,68,0.25)",
+              padding: "0.2rem 0.6rem", borderRadius: "999px"
+            }}>● {activeWristband.status}</span>
           </div>
-          <label>
+
+          {/* main content: QR left, info right */}
+          <div style={{ display: "flex", gap: "1.5rem", alignItems: "center" }}>
+            <div style={{ background: "#fff", padding: "10px", borderRadius: "12px", flexShrink: 0, boxShadow: "0 8px 20px rgba(0,0,0,0.15)" }}>
+              <QRCodeCanvas value={activeWristband.qrToken} size={120} includeMargin={false} />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", minWidth: 0 }}>
+              <div>
+                <div style={{ fontSize: "0.7rem", textTransform: "uppercase", fontWeight: 700, opacity: 0.7 }}>Token</div>
+                <div style={{ fontSize: "1.35rem", fontWeight: 900, fontFamily: "monospace", letterSpacing: "0.04em" }}>{activeWristband.qrToken}</div>
+              </div>
+              <div style={{ display: "flex", gap: "1.5rem" }}>
+                <div>
+                  <div style={{ fontSize: "0.7rem", textTransform: "uppercase", fontWeight: 700, opacity: 0.7 }}>Attendee</div>
+                  <div style={{ fontSize: "0.95rem", fontWeight: 700 }}>{attendee?.name ?? "—"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.7rem", textTransform: "uppercase", fontWeight: 700, opacity: 0.7 }}>Balance</div>
+                  <div style={{ fontSize: "1.15rem", fontWeight: 800 }}>{activeWristband.balanceCredits} <span style={{ fontSize: "0.8rem", fontWeight: 600 }}>credits</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <div className="card" style={{ textAlign: "center", padding: "2rem" }}>
+          <p className="muted">No wristband linked.</p>
+        </div>
+      )}
+
+      {/* ── Top-up ── */}
+      <section className="card stack">
+        <h2>Top-up</h2>
+        <div className="row" style={{ gap: "0.5rem" }}>
+          {TOPUP_PRESETS.map((amount) => (
+            <button
+              className="secondary-button"
+              key={amount}
+              type="button"
+              onClick={() => setTopupAmount(String(amount))}
+              disabled={topupLoading}
+              style={{ flex: 1 }}
+            >
+              {amount}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end" }}>
+          <label style={{ flex: 1 }}>
             Credits to add
             <input
               inputMode="numeric"
@@ -242,7 +282,7 @@ export default function AttendeeDashboardPage() {
               placeholder="Enter amount"
             />
           </label>
-          <button type="button" onClick={() => void topUp()} disabled={topupLoading}>
+          <button type="button" onClick={() => void topUp()} disabled={topupLoading} style={{ whiteSpace: "nowrap" }}>
             {topupLoading ? "Adding..." : "Add credits"}
           </button>
         </div>

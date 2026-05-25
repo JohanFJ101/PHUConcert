@@ -1,148 +1,92 @@
-# PHUConcert
+# PHUConcert 🎸
 
-## Local setup
+A premium, localized web application for concert wristband management, food/beverage shop ordering, and instant QR-based attendee transactions.
 
-1. Install dependencies:
+---
 
+## 🚀 Local Quickstart
+
+### 1. Install Dependencies
 ```bash
 npm install
 ```
 
-2. Create your environment file:
-
+### 2. Configure Environment Files
+Duplicate the environment template file:
 ```bash
 copy .env.example .env
 ```
+Ensure your database connection string and session secrets are properly configured.
 
-3. Start PostgreSQL. A Docker Compose file is included:
-MAKE SURE YOU HAVE DOCKER DESKTOP INSTALLED
+### 3. Run PostgreSQL Database
+A pre-configured Docker Compose Postgres configuration is provided. (Ensure you have Docker Desktop running):
 ```bash
 docker compose up -d
 ```
 
-4. Run the Prisma migration:
-
+### 4. Setup database schema & seed data
+Initialize the database and load the 10 demo attendees and counters:
 ```bash
-npm run prisma:migrate
-```
-
-5. Seed demo data:
-
-```bash
-npm run prisma:seed
-```
-
-6. Configure Google OAuth for attendee login.
-
-For same-machine localhost testing, create a Google OAuth web client and add this redirect URI:
-
-```text
-http://localhost:3000/api/auth/google/callback
-```
-
-Then set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `APP_BASE_URL="http://localhost:3000"` in `.env`.
-
-Do not use `0.0.0.0` as a browser URL or Google callback URL. It is only the server bind address used in the `npm run dev` command.
-
-7. Start the dev server:
-
-```bash
-npm run dev -- --hostname 0.0.0.0 -p 3000
-```
-
-8. For phone testing with Google OAuth, start a temporary HTTPS Cloudflare tunnel in a second terminal:
-
-```bash
-npm run tunnel
-```
-
-Cloudflare prints a random URL like `https://example.trycloudflare.com`. Use that URL to update `.env`:
-
-```bash
-npm run tunnel:env -- https://example.trycloudflare.com
-```
-
-The helper prints the exact Google callback URI. Add that exact URI to the Google OAuth web client, then restart the Next.js server so it reloads `.env`. Open the Cloudflare HTTPS URL from both phones, for example:
-
-```text
-https://example.trycloudflare.com/login
-```
-
-The random `trycloudflare.com` URL changes each time you restart the tunnel, so repeat the `tunnel:env` step and update the Google callback URI whenever the tunnel URL changes.
-
-## Demo credentials
-
-Attendee:
-
-- Go to `/login/attendee` or choose Attendee from `/login`.
-- Use Google OAuth with an email imported by the admin CSV. (I have included a mock .csv in the repo Just import that)
-- For fallback/local testing, use "Login with code" and enter the attendee Unique id number.
-
-Staff:
-
-- Go to `/login/staff` or choose Staff from `/login`.
-- `food_staff` / `password123`
-- `bar_staff` / `password123`
-
-Admin:
-
-- Go to `/login/admin` or choose Admin from `/login`.
-- `admin` / `password123`
-- Admin dashboard: `/admin/dashboard`
-
-Demo wristband token:
-
-- `BMS-DEMO-001`
-
-## Admin attendee CSV import
-
-Login as admin and open `/admin/dashboard`. The import form accepts a CSV with these columns:
-
-```csv
-FULL NAME,dob,email used for registering,Unique id number
-Demo User,2000-01-01,demo@example.com,BMS-DEMO-001
-```
-
-The importer validates the whole file, upserts attendees by email, stores the unique id as `ticketId`, and creates an active wristband whose QR token is the same unique id for the current MVP.
-
-## Manual test checklist
-
-1. Open `/login` on phone 1 using the same origin that is in `APP_BASE_URL`.
-2. Choose Staff, then login as `food_staff` / `password123`.
-3. Add Burger and Fries to the basket.
-4. Click Generate approval QR.
-5. Open the QR URL on phone 2 while logged out, or scan the QR with the phone camera.
-6. Login as the attendee using Google or Login with code `BMS-DEMO-001`.
-7. Confirm the attendee returns to the purchase review page.
-8. Confirm the review shows Burger, Fries, quantities, line totals, total credits, current balance, and balance after approval.
-9. Approve the purchase.
-10. Confirm the staff phone changes from waiting to approved.
-11. Open `/attendee/dashboard` and confirm the balance and transaction history update.
-12. Login as `bar_staff` and generate a Beer approval QR.
-13. Confirm approval succeeds for the demo user because DOB is `2000-01-01`.
-14. Change demo DOB to under 21 and confirm alcohol approval fails.
-15. Try a basket that costs more than the attendee balance and confirm approval is blocked.
-16. Let a QR sit for more than 5 minutes and confirm it expires.
-17. POST to `/api/staff/charge` and confirm it returns `410 Gone`.
-18. Choose Admin, then login as `admin` / `password123`.
-19. Confirm the admin dashboard shows attendees, staff/admins, and recent transactions.
-
-## Useful commands
-
-```bash
-npm run lint
-npm run build
-npm run tunnel
-npm run tunnel:env -- https://example.trycloudflare.com
-npm run prisma:generate
 npm run prisma:migrate
 npm run prisma:seed
 ```
 
-## MVP limitations
+---
 
-- No in-app camera scanner yet; QR approval uses the phone camera/browser opening the encoded URL. (BUGGED OUT, Makes attendee re Oauth)
-- No real payment gateway yet. 
-- Ticketing integration is CSV import only; there is no live BookMyShow API sync yet. (Unlikely to be implemented)
-- Staff and attendee devices never communicate directly; the database-backed API is the source of truth.
+## 📱 Testing on Phones (Secure HTTPS Tunnel)
 
+To test the **wristband QR scanner** on a physical phone, the browser requires a secure **HTTPS** origin (non-localhost HTTP connections block camera APIs like `navigator.mediaDevices.getUserMedia`). 
+
+We have bundled a zero-configuration **Cloudflare Tunnel** that automatically assigns a secure HTTPS URL to your local server:
+
+1. **Stop** any currently running Next.js dev servers on your machine.
+2. **Start the secure development tunnel** by running:
+   ```bash
+   npm run dev:tunnel
+   ```
+3. Copy the secure Cloudflare URL printed in your terminal:
+   ```text
+   Cloudflare URL: https://xxxx-xxxx.trycloudflare.com
+   ```
+4. Open this URL on your phone's browser. You will be prompted to grant camera access when using the scanner, and it will function perfectly!
+
+> [!NOTE]
+> The helper script automatically updates your `APP_BASE_URL` in `.env` every time the tunnel starts up, so there is no need to manually edit `.env` files.
+
+---
+
+## 🔑 Demo Credentials
+
+| Role | Username / ID | Password | Access URL |
+| :--- | :--- | :--- | :--- |
+| **Attendee (Hardcoded)** | `10000001` to `10000010` | *None (Use token code/QR)* | `/login/attendee` |
+| **Food Staff** | `food_staff` | `password123` | `/login/staff` |
+| **Bar Staff** | `bar_staff` | `password123` | `/login/staff` |
+| **Admin** | `admin` | `password123` | `/login/admin` |
+
+---
+
+## 🛠️ Features & Workflow
+
+### 1. Wristband QR Code Export & Import
+- Log in to the Admin Dashboard (`/admin/dashboard`).
+- From the **Attendees** section, click **"Export Attendee QRs as ZIP"**.
+- This generates high-resolution, shareable QR codes for all 10 seeded attendees instantly.
+- You can also upload a custom CSV containing names, DOBs, emails, and ticket numbers to bulk-import new attendees.
+
+### 2. Cashless Ordering Flow
+1. **Log in as Staff** (e.g., `food_staff` / `password123`).
+2. Add items (e.g., Burger, Fries) to the cart and click **Generate QR**.
+3. **Log in as Attendee** on a second device (or scan the staff's QR code using the physical phone camera).
+4. Review the transaction details (current balance, items, total cost, and post-transaction balance).
+5. Confirm the transaction to instantly deduct credits. The staff terminal will update automatically to reflect approval!
+
+---
+
+## 💻 Helpful Scripts
+
+- `npm run dev` — Start the standard development server on `localhost:3000`.
+- `npm run dev:tunnel` — Start dev server with secure HTTPS public URL (recommended for phones).
+- `npm run lint` — Run ESLint diagnostics.
+- `npm run build` — Create production bundle.
+- `npm run prisma:generate` — Regenerate Prisma client.

@@ -451,6 +451,127 @@ label {
   border-top: 0;
 }
 
+/* ---- Scanner + QR grid ----------------------------------------------- */
+
+/* The div html5-qrcode renders the camera preview into. The library
+   injects its own elements; we just set the size and a border so the
+   viewport reads as part of a card. */
+.scanner-viewport {
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  min-height: 240px;
+}
+
+.scanner-viewport video {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+}
+
+/* Responsive grid of QR codes shown after the admin batch-generates
+   wristbands. Each cell has the QR canvas above and the token text
+   below for easy print/cross-reference. */
+.qr-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.qr-grid-item {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  text-align: center;
+}
+
+.qr-grid-item canvas {
+  width: 100%;
+  height: auto;
+}
+
+.qr-grid-item code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+/* Attendee inline-edit row uses .stack but needs a top border for
+   visual separation from siblings. */
+.attendee-row {
+  border-top: 1px solid var(--border);
+  padding: 0.85rem 0;
+}
+
+.attendee-row:first-of-type {
+  border-top: 0;
+}
+
+/* ---- /login layout (big attendee card + top-corner staff/admin) ------ */
+
+.login-shell {
+  min-height: 100vh;
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: var(--bg);
+}
+
+.login-corner {
+  position: absolute;
+  top: 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  padding: 0.45rem 0.95rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+
+.login-corner:hover {
+  background: #eaf2ff;
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.login-corner-left {
+  left: 1rem;
+}
+
+.login-corner-right {
+  right: 1rem;
+}
+
+.login-center {
+  width: 100%;
+  max-width: 480px;
+  display: grid;
+  place-items: center;
+}
+
+.login-attendee-card {
+  width: 100%;
+  padding: 2rem 1.75rem;
+  text-align: center;
+}
+
+.login-attendee-card h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
 @media (max-width: 640px) {
   .admin-row {
     grid-template-columns: 1fr;

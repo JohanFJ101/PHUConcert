@@ -1,15 +1,15 @@
 /**
  * GET /api/admin/overview
  *
- * One-stop endpoint for the admin dashboard. Runs three reads in parallel
- * (attendees + their wristbands, active staff + their shops, last 100
- * transactions with relations) and computes header totals on top.
+ * One-stop endpoint for the admin dashboard. Runs the reads in parallel
+ * and computes header totals on top.
  *
- * Response: { totals, attendees, staff, transactions } where:
+ * Response: { totals, attendees, staff, transactions, blankWristbands }
  *   - totals: aggregate counts and credit sums for the header tiles.
  *   - attendees: user rows with their wristbands.
  *   - staff: active STAFF rows with their shop/menu relation.
  *   - transactions: flattened ledger rows (latest 100).
+ *   - blankWristbands: wristbands not yet linked to any user.
  *
  * Auth: ADMIN session required.
  */
@@ -25,9 +25,9 @@ export async function GET() {
   }
 
   try {
-    // Three independent reads, kicked off together so the dashboard is
-    // bounded by the slowest query rather than the sum of all three.
-    const [attendees, staffMembers, transactions] = await Promise.all([
+    // Four independent reads, kicked off together so the dashboard is
+    // bounded by the slowest query rather than the sum of all four.
+    const [attendees, staffMembers, transactions, blankWristbands] = await Promise.all([
       prisma.user.findMany({
         select: {
           id: true,
@@ -130,6 +130,21 @@ export async function GET() {
         // Cap to the latest 100 so the dashboard stays responsive even
         // after thousands of charges; pagination can be added later.
         take: 100
+      }),
+      prisma.wristband.findMany({
+        where: {
+          userId: null
+        },
+        select: {
+          id: true,
+          qrToken: true,
+          status: true,
+          balanceCredits: true,
+          createdAt: true
+        },
+        orderBy: {
+          createdAt: "desc"
+        }
       })
     ]);
 
@@ -160,12 +175,14 @@ export async function GET() {
         attendees: attendees.length,
         staff: staffMembers.length,
         transactions: transactions.length,
+        blankWristbands: blankWristbands.length,
         totalBalance,
         totalSpend,
         totalTopups
       },
       attendees,
       staff: staffMembers,
+      blankWristbands,
       // Flatten the nested Prisma shape into the form the UI consumes,
       // so the frontend doesn't have to walk multiple levels of nullable
       // relations.
@@ -176,8 +193,8 @@ export async function GET() {
         description: transaction.description,
         createdAt: transaction.createdAt,
         wristbandToken: transaction.wristband.qrToken,
-        attendeeName: transaction.wristband.user.name,
-        attendeeEmail: transaction.wristband.user.email,
+        attendeeName: transaction.wristband.user?.name ?? "Unknown",
+        attendeeEmail: transaction.wristband.user?.email ?? "",
         staffUsername: transaction.staff?.username ?? null,
         staffRole: transaction.staff?.role ?? null,
         shopName: transaction.shop?.name ?? null,

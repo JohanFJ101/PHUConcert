@@ -2,9 +2,10 @@
  * POST /api/admin/attendees/import
  *
  * Admin-only CSV import for ticketing/BookMyShow attendee rows. Expected
- * columns are FULL NAME, dob, email used for registering, and Unique id
- * number. Header matching is case-insensitive and tolerant of spaces and
- * punctuation so exports like `full_name` or `Date of Birth` still work.
+ * columns are FULL NAME, dob, email used for registering, phone, and
+ * Unique id number. Header matching is case-insensitive and tolerant of
+ * spaces and punctuation so exports like `full_name` or `Date of Birth`
+ * still work.
  *
  * Import policy:
  *   - Validate the whole CSV before writing anything.
@@ -113,7 +114,10 @@ export async function POST(request: Request) {
 
     wristbandsWithTicketIds.forEach((wristband) => {
       const row = rowsByTicketId.get(wristband.qrToken);
-      if (row && normalizeAttendeeEmail(wristband.user.email) !== row.email) {
+      if (!row) {
+        return;
+      }
+      if (wristband.user && normalizeAttendeeEmail(wristband.user.email) !== row.email) {
         databaseErrors.push(
           `Row ${row.rowNumber}: wristband token already belongs to ${wristband.user.email}.`
         );
@@ -180,6 +184,7 @@ export async function POST(request: Request) {
                 email: attendee.email,
                 name: attendee.fullName,
                 dob: attendee.dob,
+                phone: attendee.phone,
                 ticketId: attendee.ticketId
               },
               select: {
@@ -191,6 +196,7 @@ export async function POST(request: Request) {
                 email: attendee.email,
                 name: attendee.fullName,
                 dob: attendee.dob,
+                phone: attendee.phone,
                 ticketId: attendee.ticketId
               },
               select: {
@@ -215,7 +221,7 @@ export async function POST(request: Request) {
         });
 
         if (existingWristband) {
-          if (existingWristband.userId !== user.id) {
+          if (existingWristband.userId && existingWristband.userId !== user.id) {
             throw new Error("Wristband belongs to a different attendee.");
           }
           await tx.wristband.update({
@@ -223,7 +229,8 @@ export async function POST(request: Request) {
               id: existingWristband.id
             },
             data: {
-              status: "ACTIVE"
+              status: "ACTIVE",
+              userId: user.id
             }
           });
           wristbandsUpdated += 1;
