@@ -2,13 +2,13 @@
  * GET /api/admin/overview
  *
  * One-stop endpoint for the admin dashboard. Runs three reads in parallel
- * (attendees + their wristbands, staff + their shops, last 100
+ * (attendees + their wristbands, active staff + their shops, last 100
  * transactions with relations) and computes header totals on top.
  *
  * Response: { totals, attendees, staff, transactions } where:
  *   - totals: aggregate counts and credit sums for the header tiles.
  *   - attendees: user rows with their wristbands.
- *   - staff: staff rows with their shop relation.
+ *   - staff: active STAFF rows with their shop/menu relation.
  *   - transactions: flattened ledger rows (latest 100).
  *
  * Auth: ADMIN session required.
@@ -58,16 +58,34 @@ export async function GET() {
       prisma.staff.findMany({
         // `passwordHash` is intentionally excluded so it can never leak
         // to the admin UI.
+        where: {
+          role: "STAFF",
+          active: true
+        },
         select: {
           id: true,
           username: true,
           role: true,
+          active: true,
           createdAt: true,
           shop: {
             select: {
               id: true,
               name: true,
-              category: true
+              category: true,
+              items: {
+                select: {
+                  id: true,
+                  name: true,
+                  priceCredits: true,
+                  category: true,
+                  ageRestricted: true,
+                  active: true
+                },
+                orderBy: {
+                  name: "asc"
+                }
+              }
             }
           }
         },
@@ -140,8 +158,7 @@ export async function GET() {
     return NextResponse.json({
       totals: {
         attendees: attendees.length,
-        staff: staffMembers.filter((staff) => staff.role === "STAFF").length,
-        admins: staffMembers.filter((staff) => staff.role === "ADMIN").length,
+        staff: staffMembers.length,
         transactions: transactions.length,
         totalBalance,
         totalSpend,

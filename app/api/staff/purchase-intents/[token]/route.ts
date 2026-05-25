@@ -47,6 +47,20 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   try {
+    const staff = await prisma.staff.findUnique({
+      where: {
+        id: session.staffId
+      },
+      select: {
+        role: true,
+        active: true
+      }
+    });
+
+    if (!staff || staff.role !== "STAFF" || !staff.active) {
+      return jsonError("Staff account is inactive.", 403);
+    }
+
     const purchaseIntent = await prisma.purchaseIntent.findFirst({
       where: {
         token,

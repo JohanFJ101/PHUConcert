@@ -33,6 +33,7 @@ export async function GET() {
         id: true,
         username: true,
         role: true,
+        active: true,
         shop: {
           select: {
             id: true,
@@ -62,7 +63,7 @@ export async function GET() {
 
     // Defensive check: the session guard already confirmed the role, but
     // a STAFF row without a shop should not be usable on this page.
-    if (!staff || staff.role !== "STAFF" || !staff.shop) {
+    if (!staff || staff.role !== "STAFF" || !staff.active || !staff.shop) {
       return NextResponse.json(
         {
           success: false,

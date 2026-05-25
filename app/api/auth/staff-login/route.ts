@@ -35,7 +35,8 @@ export async function POST(request: Request) {
       select: {
         id: true,
         passwordHash: true,
-        role: true
+        role: true,
+        active: true
       }
     });
 
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
     if (
       !staff ||
       staff.role !== "STAFF" ||
+      !staff.active ||
       !(await bcrypt.compare(password, staff.passwordHash))
     ) {
       return jsonError("Invalid username or password", 401);

@@ -67,10 +67,13 @@ model User {
 // password-based auth and shop assignment, whereas `User` is OAuth-shaped.
 model Staff {
   id              String           @id @default(cuid())
-  username     String        @unique
+  username        String           @unique
   // bcrypt hash; never returned to the client.
   passwordHash    String
   role            Role             @default(STAFF)
+  // Soft-disable an operator account without losing historical transaction
+  // links. Login and staff APIs only accept active STAFF rows.
+  active          Boolean          @default(true)
   // STAFF accounts must have a shop; ADMIN accounts have no shop. The FK
   // is nullable so admins can exist, and the staff-charge route enforces
   // that STAFF rows actually have a `shopId` at runtime.

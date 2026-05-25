@@ -34,7 +34,8 @@ export async function POST(request: Request) {
       select: {
         id: true,
         passwordHash: true,
-        role: true
+        role: true,
+        active: true
       }
     });
 
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
     if (
       !admin ||
       admin.role !== "ADMIN" ||
+      !admin.active ||
       !(await bcrypt.compare(password, admin.passwordHash))
     ) {
       return jsonError("Invalid username or password", 401);

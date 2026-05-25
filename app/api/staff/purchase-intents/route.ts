@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
       select: {
         id: true,
         role: true,
+        active: true,
         shopId: true,
         shop: {
           select: {
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    if (!staff || staff.role !== "STAFF" || !staff.shopId || !staff.shop) {
+    if (!staff || staff.role !== "STAFF" || !staff.active || !staff.shopId || !staff.shop) {
       return jsonError("Staff shop not found", 403);
     }
 
