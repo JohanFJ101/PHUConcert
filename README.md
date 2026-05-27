@@ -1,7 +1,4 @@
 # PHUConcert 🎸
-
-A premium, localized web application for concert wristband management, food/beverage shop ordering, and instant QR-based attendee transactions.
-
 ---
 
 ## 🚀 Local Quickstart
